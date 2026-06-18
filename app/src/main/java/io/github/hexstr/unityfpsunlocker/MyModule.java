@@ -76,32 +76,39 @@ public class MyModule implements IXposedHookLoadPackage {
             XposedBridge.log("Cannot read settings");
         }
 
-        XposedHelpers.findAndHookConstructor(
-                "com.unity3d.player.UnityPlayer",
-                lpparam.classLoader,
-                Context.class,
-                XposedHelpers.findClass("com.unity3d.player.IUnityPlayerLifecycleEvents", lpparam.classLoader),
-                new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        Object contextObj = param.args[0];
-                        if (contextObj instanceof Activity) {
-                            Activity activity = (Activity) contextObj;
-                            if (activity != null && display_mode_id != -1) {
-                                Window window = activity.getWindow();
-                                WindowManager.LayoutParams params = window.getAttributes();
-                                params.preferredDisplayModeId = display_mode_id;
-                                window.setAttributes(params);
-                                XposedBridge.log("Set display mode to " + display_mode_id);
+        try {
+            // ★修正ポイント：コンパス向けに引数を3つ（EnumC1199xを追加）にしてフックする★
+            XposedHelpers.findAndHookConstructor(
+                    "com.unity3d.player.UnityPlayer",
+                    lpparam.classLoader,
+                    Context.class,
+                    XposedHelpers.findClass("com.unity3d.player.EnumC1199x", lpparam.classLoader), // 第2引数に追加
+                    XposedHelpers.findClass("com.unity3d.player.IUnityPlayerLifecycleEvents", lpparam.classLoader), // 第3引数にスライド
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            Object contextObj = param.args[0]; // Contextは第1引数のままなので変更不要
+                            if (contextObj instanceof Activity) {
+                                Activity activity = (Activity) contextObj;
+                                if (activity != null && display_mode_id != -1) {
+                                    Window window = activity.getWindow();
+                                    WindowManager.LayoutParams params = window.getAttributes();
+                                    params.preferredDisplayModeId = display_mode_id;
+                                    window.setAttributes(params);
+                                    XposedBridge.log("Set display mode to " + display_mode_id);
+                                } else {
+                                    XposedBridge.log("activity is null.");
+                                }
                             } else {
-                                XposedBridge.log("activity is null.");
+                                XposedBridge.log("contextObj is not activity.");
                             }
-                        } else {
-                            XposedBridge.log("contextObj is not activity.");
                         }
                     }
-                }
-        );
+            );
+        } catch (Throwable t) {
+            // 万が一クラスが見つからなかった場合のエラー回避
+            XposedBridge.log("UnityFPSUnlocker Hook failed: " + t.getMessage());
+        }
 
         XposedBridge.log("display_mode_id: " + display_mode_id + " | delay: " + delay + " | fps: " + fps + " | mod_opcode: " + mod_opcode + " | scale: " + scale);
         System.loadLibrary("UnityFPSUnlocker");
