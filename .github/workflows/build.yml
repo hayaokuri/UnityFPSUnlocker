@@ -7,52 +7,47 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Code (xposed branch)
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Debug - List repo structure
-        run: |
-          echo "=== ルート直下 ==="
-          ls -la
-          echo "=== app/build.gradle の内容 ==="
-          cat app/build.gradle
-          echo "=== app直下の構成 ==="
-          find app -maxdepth 3 -type d
-          echo "=== app内の.cpp/.c/.hファイルを検索 ==="
-          find . -name "*.cpp" -o -name "*.c" -o -name "*.h" 2>/dev/null
-          echo "=== app内のCMakeLists.txt風ファイルやjniLibsを検索 ==="
-          find . -iname "*cmake*" -o -iname "*jniLibs*" 2>/dev/null
+      - name: Checkout C++ Engine (zygisk_module branch)
+        uses: actions/checkout@v4
+        with:
+          ref: zygisk_module
+          path: cpp_engine
+          submodules: recursive
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-      # 新規追加：C++の心臓部をCMakeとAndroid NDKで自力コンパイルする
+
       - name: Build C++ Engine (CMake)
         run: |
           echo "C++のビルドを開始します..."
           mkdir -p build_arm64
           cd build_arm64
-          
-          # GitHubに最初から入っているAndroid NDKを使ってコンパイル
-          cmake .. \
+
+          cmake ../cpp_engine \
             -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-27
           make
-          
-          # 出来上がった .so ファイルをAndroidアプリの正しいフォルダにコピー
+
           echo "ビルドした.soファイルを配置します..."
-          mkdir -p ../app/src/main/jniLibs/arm64-v8a/
-          find . -name "*.so" -exec cp {} ../app/src/main/jniLibs/arm64-v8a/ \;
+          mkdir -p ../app/src/main/libs/arm64-v8a/
+          find . -name "*.so" -exec cp {} ../app/src/main/libs/arm64-v8a/ \;
           cd ..
+
       - name: Make gradlew executable
         run: chmod +x ./gradlew
+
       - name: Build APK (Java + C++)
         run: ./gradlew assembleDebug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
