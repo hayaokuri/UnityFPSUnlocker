@@ -1,10 +1,8 @@
 name: Build Xposed Module (Full)
-
 on:
   push:
     branches: [ "xposed" ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,12 +12,22 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Debug - List repo structure
+        run: |
+          echo "=== ルート直下 ==="
+          ls -la
+          echo "=== CMakeLists.txt を検索 ==="
+          find . -name "CMakeLists.txt" 2>/dev/null
+          echo "=== build.gradle を検索 ==="
+          find . -name "build.gradle*" 2>/dev/null
+          echo "=== ブランチ名確認 ==="
+          git branch --show-current
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-
       # 新規追加：C++の心臓部をCMakeとAndroid NDKで自力コンパイルする
       - name: Build C++ Engine (CMake)
         run: |
@@ -39,13 +47,10 @@ jobs:
           mkdir -p ../app/src/main/jniLibs/arm64-v8a/
           find . -name "*.so" -exec cp {} ../app/src/main/jniLibs/arm64-v8a/ \;
           cd ..
-
       - name: Make gradlew executable
         run: chmod +x ./gradlew
-
       - name: Build APK (Java + C++)
         run: ./gradlew assembleDebug
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
