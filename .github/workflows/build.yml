@@ -16,12 +16,14 @@ jobs:
         run: |
           echo "=== ルート直下 ==="
           ls -la
-          echo "=== CMakeLists.txt を検索 ==="
-          find . -name "CMakeLists.txt" 2>/dev/null
-          echo "=== build.gradle を検索 ==="
-          find . -name "build.gradle*" 2>/dev/null
-          echo "=== ブランチ名確認 ==="
-          git branch --show-current
+          echo "=== app/build.gradle の内容 ==="
+          cat app/build.gradle
+          echo "=== app直下の構成 ==="
+          find app -maxdepth 3 -type d
+          echo "=== app内の.cpp/.c/.hファイルを検索 ==="
+          find . -name "*.cpp" -o -name "*.c" -o -name "*.h" 2>/dev/null
+          echo "=== app内のCMakeLists.txt風ファイルやjniLibsを検索 ==="
+          find . -iname "*cmake*" -o -iname "*jniLibs*" 2>/dev/null
 
       - name: Setup Java
         uses: actions/setup-java@v4
