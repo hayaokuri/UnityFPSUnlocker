@@ -1,4 +1,4 @@
-name: Build Xposed Module (Full)
+name: Build Xposed Module (Clean)
 
 on:
   push:
@@ -27,72 +27,32 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Patch CMakeLists.txt for Abseil
+      - name: Patch CMakeLists.txt for Abseil & Output Name
         run: |
           python3 - <<'PYEOF'
           path = "cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
           with open(path, "r", encoding="utf-8") as f:
               content = f.read()
           
+          # Abseilのエラー回避パッチ
           fetch_block = '''include(FetchContent)\nFetchContent_Declare(\n  absl\n  GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git\n  GIT_TAG        20240722.0\n)\nset(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)\nset(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)\nset(BUILD_TESTING OFF CACHE BOOL "" FORCE)\nFetchContent_MakeAvailable(absl)\n'''
-          
           content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
+          
+          # ★新規追加：Gradleが正しい名前（libUnityFPSUnlocker.so）で認識できるように、CMake側のリネーム処理を無効化する
+          content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled for Gradle build")
+          
           with open(path, "w", encoding="utf-8") as f:
               f.write(content)
           PYEOF
 
-      - name: Build C++ Engine (CMake)
+      - name: Build APK with Gradle (Java + C++ Auto Build)
         run: |
-          echo "C++のビルドを開始します..."
-          mkdir -p build_arm64
-          cd build_arm64
-          cmake ../cpp_engine \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-27 \
-            -DCMAKE_BUILD_TYPE=Release
-          make -j$(nproc)
-          cd ..
-
-      - name: Build Java APK
-        run: |
-          echo "ガワとなるAPKをビルドします..."
+          echo "GradleでJavaとC++をまとめて完全ビルドします..."
           chmod +x ./gradlew
           ./gradlew assembleDebug
-
-      - name: Force Inject Engine & Resign APK
-        run: |
-          echo "完成したAPKにC++エンジンを直接注入します..."
-          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          
-          # 注入用のフォルダ構造を作成
-          mkdir -p inject_so/lib/arm64-v8a
-          cp cpp_engine/libs/Release/arm64-v8a.so inject_so/lib/arm64-v8a/libUnityFPSUnlocker.so
-          
-          # APK (実体はZIP) に直接ファイルを追加
-          # ★修正箇所: -0 オプションを追加して「無圧縮」で格納する！
-          cd inject_so
-          zip -0 -ur "../$APK_PATH" lib/
-          cd ..
-          
-          echo "APKの最適化と再署名を実行します..."
-          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
-          
-          # zipコマンドで壊れた配置を修復 (.soをメモリに直接読めるように整列)
-          $BUILD_TOOLS/zipalign -p -f 4 "$APK_PATH" aligned.apk
-          mv aligned.apk "$APK_PATH"
-          
-          # その場限りの署名キーを作成
-          keytool -genkey -v -keystore temp_debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" -storepass android -keypass android
-          
-          # 作成したtemp_debug.keystoreを使って再署名
-          $BUILD_TOOLS/apksigner sign --ks temp_debug.keystore --ks-pass pass:android --key-pass pass:android "$APK_PATH"
-          
-          echo "=== 最終確認: APK内のライブラリ一覧 ==="
-          unzip -l "$APK_PATH" | grep lib/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: UnityFPSUnlocker-Xposed-Complete
+          name: UnityFPSUnlocker-Xposed-Clean
           path: app/build/outputs/apk/debug/*.apk
