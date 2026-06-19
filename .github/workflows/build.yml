@@ -74,16 +74,31 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
+          echo "=== build_arm64内に生成された.soファイル一覧 ==="
+          find . -name "*.so"
+
           echo "ビルドした.soファイルを配置します..."
           mkdir -p ../app/src/main/libs/arm64-v8a/
           find . -name "*.so" -exec cp {} ../app/src/main/libs/arm64-v8a/ \;
           cd ..
+
+          echo "=== コピー後のapp/src/main/libs配下 ==="
+          find app/src/main/libs -type f
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
       - name: Build APK (Java + C++)
         run: ./gradlew assembleDebug
+
+      - name: Debug - Inspect APK contents
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          echo "=== APKパス: $APK_PATH ==="
+          echo "=== APK内のlib関連ファイル一覧 ==="
+          unzip -l "$APK_PATH" | grep -i "\.so" || echo "（.soファイルがAPK内に見つかりません）"
+          echo "=== APK内のlib/arm64-v8a配下 ==="
+          unzip -l "$APK_PATH" | grep "lib/arm64-v8a" || echo "（lib/arm64-v8aディレクトリが見つかりません）"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
