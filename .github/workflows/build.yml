@@ -70,21 +70,22 @@ jobs:
           cp cpp_engine/libs/Release/arm64-v8a.so inject_so/lib/arm64-v8a/libUnityFPSUnlocker.so
           
           # APK (実体はZIP) に直接ファイルを追加
+          # ★修正箇所: -0 オプションを追加して「無圧縮」で格納する！
           cd inject_so
-          zip -ur "../$APK_PATH" lib/
+          zip -0 -ur "../$APK_PATH" lib/
           cd ..
           
           echo "APKの最適化と再署名を実行します..."
           BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
           
-          # zipコマンドで壊れた配置を修復 (zipalign)
+          # zipコマンドで壊れた配置を修復 (.soをメモリに直接読めるように整列)
           $BUILD_TOOLS/zipalign -p -f 4 "$APK_PATH" aligned.apk
           mv aligned.apk "$APK_PATH"
           
-          # ★追加：その場限りの署名キー（keystore）を作成する
+          # その場限りの署名キーを作成
           keytool -genkey -v -keystore temp_debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" -storepass android -keypass android
           
-          # ★修正：作成したtemp_debug.keystoreを使って再署名
+          # 作成したtemp_debug.keystoreを使って再署名
           $BUILD_TOOLS/apksigner sign --ks temp_debug.keystore --ks-pass pass:android --key-pass pass:android "$APK_PATH"
           
           echo "=== 最終確認: APK内のライブラリ一覧 ==="
