@@ -67,7 +67,9 @@ jobs:
           
           # 注入用のフォルダ構造を作成
           mkdir -p inject_so/lib/arm64-v8a
-          cp build_arm64/cpp_engine/libs/Release/arm64-v8a.so inject_so/lib/arm64-v8a/libUnityFPSUnlocker.so
+          
+          # ★修正箇所：build_arm64/ を削除し、cpp_engine/libs/... を直接指定
+          cp cpp_engine/libs/Release/arm64-v8a.so inject_so/lib/arm64-v8a/libUnityFPSUnlocker.so
           
           # APK (実体はZIP) に直接ファイルを追加
           cd inject_so
