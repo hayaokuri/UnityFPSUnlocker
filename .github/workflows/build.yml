@@ -52,7 +52,6 @@ jobs:
           FetchContent_MakeAvailable(absl)
           '''
           content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
-          
           content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled for Gradle build")
           
           with open(path, "w", encoding="utf-8") as f:
@@ -60,18 +59,18 @@ jobs:
           PYEOF
 
       - name: Build Zygisk Native Library (C++)
-        working-directory: ./cpp_engine
+        working-directory: ./cpp_engine/UnityFPSUnlocker
         run: |
           echo "Building Zygisk native library..."
-          ls -la  # デバッグ用：ファイル一覧確認
+          ls -la
           chmod +x ./gradlew
-          ./gradlew :UnityFPSUnlocker:assembleDebug --stacktrace
+          ./gradlew assembleDebug --stacktrace
 
       - name: Copy libUnityFPSUnlocker.so to Xposed jniLibs
         run: |
           mkdir -p app/src/main/jniLibs/arm64-v8a
           cp cpp_engine/UnityFPSUnlocker/build/intermediates/cmake/debug/obj/arm64-v8a/libUnityFPSUnlocker.so \
-             app/src/main/jniLibs/arm64-v8a/libUnityFPSUnlocker.so || echo "Copy may have failed - check path"
+             app/src/main/jniLibs/arm64-v8a/libUnityFPSUnlocker.so || echo "Copy failed - check path"
           ls -la app/src/main/jniLibs/arm64-v8a/
 
       - name: Build Xposed APK
