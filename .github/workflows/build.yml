@@ -9,13 +9,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. Java側（ガワ）のコードをxposedブランチから取得
       - name: Checkout Xposed Branch (Java Wrapper)
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # 2. C++側（心臓部）のコードをzygisk_moduleブランチから取得し、cpp_engineフォルダに入れる
       - name: Checkout Zygisk Branch (C++ Engine)
         uses: actions/checkout@v4
         with:
@@ -29,7 +27,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # 3. Abseilライブラリのビルドエラーを回避するためのパッチ処理
       - name: Patch CMakeLists.txt for Abseil
         run: |
           python3 - <<'PYEOF'
@@ -37,48 +34,58 @@ jobs:
           with open(path, "r", encoding="utf-8") as f:
               content = f.read()
           
-          fetch_block = '''include(FetchContent)
-          FetchContent_Declare(
-            absl
-            GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
-            GIT_TAG        20240722.0
-          )
-          set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
-          set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-          set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-          FetchContent_MakeAvailable(absl)
-          '''
+          fetch_block = '''include(FetchContent)\nFetchContent_Declare(\n  absl\n  GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git\n  GIT_TAG        20240722.0\n)\nset(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)\nset(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)\nset(BUILD_TESTING OFF CACHE BOOL "" FORCE)\nFetchContent_MakeAvailable(absl)\n'''
           
           content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
-          
           with open(path, "w", encoding="utf-8") as f:
               f.write(content)
           PYEOF
 
-      # 4. パッチを当てたC++エンジンをビルドして、正しい名前・正しい場所に配置
       - name: Build C++ Engine (CMake)
         run: |
           echo "C++のビルドを開始します..."
           mkdir -p build_arm64
           cd build_arm64
-          
           cmake ../cpp_engine \
             -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-27 \
             -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
-          
-          echo "ビルドした.soファイルを配置・リネームします..."
-          mkdir -p ../app/src/main/jniLibs/arm64-v8a/
-          cp ../cpp_engine/libs/Release/arm64-v8a.so ../app/src/main/jniLibs/arm64-v8a/libUnityFPSUnlocker.so
           cd ..
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+      - name: Build Java APK
+        run: |
+          echo "ガワとなるAPKをビルドします..."
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
 
-      - name: Build APK (Java + C++)
-        run: ./gradlew assembleDebug
+      - name: Force Inject Engine & Resign APK
+        run: |
+          echo "完成したAPKにC++エンジンを直接注入します..."
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          
+          # 注入用のフォルダ構造を作成
+          mkdir -p inject_so/lib/arm64-v8a
+          cp build_arm64/cpp_engine/libs/Release/arm64-v8a.so inject_so/lib/arm64-v8a/libUnityFPSUnlocker.so
+          
+          # APK (実体はZIP) に直接ファイルを追加
+          cd inject_so
+          zip -ur "../$APK_PATH" lib/
+          cd ..
+          
+          echo "APKの最適化と再署名を実行します..."
+          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          
+          # zipコマンドで壊れた配置を修復 (zipalign)
+          $BUILD_TOOLS/zipalign -p -f 4 "$APK_PATH" aligned.apk
+          mv aligned.apk "$APK_PATH"
+          
+          # Android公式のデバッグキーで再署名
+          $BUILD_TOOLS/apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android "$APK_PATH"
+          
+          echo "=== 最終確認: APK内のライブラリ一覧 ==="
+          unzip -l "$APK_PATH" | grep lib/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
