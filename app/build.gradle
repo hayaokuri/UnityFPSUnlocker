@@ -12,6 +12,22 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+
+        // ★追加：C++をコンパイルするための設定
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -fno-rtti -fno-exceptions"
+                abiFilters "arm64-v8a"
+                arguments "-DANDROID_PLATFORM=android-28", "-DCMAKE_BUILD_TYPE=Release"
+            }
+        }
+    }
+
+    // ★追加：C++のビルド指示書（CMakeLists.txt）の場所をGradleに教える
+    externalNativeBuild {
+        cmake {
+            path "../cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
+        }
     }
 
     sourceSets {
