@@ -67,8 +67,6 @@ jobs:
           
           # 注入用のフォルダ構造を作成
           mkdir -p inject_so/lib/arm64-v8a
-          
-          # ★修正箇所：build_arm64/ を削除し、cpp_engine/libs/... を直接指定
           cp cpp_engine/libs/Release/arm64-v8a.so inject_so/lib/arm64-v8a/libUnityFPSUnlocker.so
           
           # APK (実体はZIP) に直接ファイルを追加
@@ -83,8 +81,11 @@ jobs:
           $BUILD_TOOLS/zipalign -p -f 4 "$APK_PATH" aligned.apk
           mv aligned.apk "$APK_PATH"
           
-          # Android公式のデバッグキーで再署名
-          $BUILD_TOOLS/apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android "$APK_PATH"
+          # ★追加：その場限りの署名キー（keystore）を作成する
+          keytool -genkey -v -keystore temp_debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" -storepass android -keypass android
+          
+          # ★修正：作成したtemp_debug.keystoreを使って再署名
+          $BUILD_TOOLS/apksigner sign --ks temp_debug.keystore --ks-pass pass:android --key-pass pass:android "$APK_PATH"
           
           echo "=== 最終確認: APK内のライブラリ一覧 ==="
           unzip -l "$APK_PATH" | grep lib/
