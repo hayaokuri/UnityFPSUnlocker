@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Xposed Branch (Java Wrapper)
         uses: actions/checkout@v4
@@ -27,29 +28,57 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Patch CMakeLists.txt for Abseil & Output Name
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27
+
+      - name: Patch CMakeLists.txt
         run: |
           python3 - <<'PYEOF'
           path = "cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
           with open(path, "r", encoding="utf-8") as f:
               content = f.read()
           
-          # Abseilのエラー回避パッチ
-          fetch_block = '''include(FetchContent)\nFetchContent_Declare(\n  absl\n  GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git\n  GIT_TAG        20240722.0\n)\nset(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)\nset(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)\nset(BUILD_TESTING OFF CACHE BOOL "" FORCE)\nFetchContent_MakeAvailable(absl)\n'''
+          # Abseil対応
+          fetch_block = '''include(FetchContent)
+          FetchContent_Declare(
+            absl
+            GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
+            GIT_TAG 20240722.0
+          )
+          set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
+          set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+          set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+          FetchContent_MakeAvailable(absl)
+          '''
           content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
           
-          # ★新規追加：Gradleが正しい名前（libUnityFPSUnlocker.so）で認識できるように、CMake側のリネーム処理を無効化する
+          # OUTPUT_NAME の無効化（Gradle用）
           content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled for Gradle build")
           
           with open(path, "w", encoding="utf-8") as f:
               f.write(content)
           PYEOF
 
-      - name: Build APK with Gradle (Java + C++ Auto Build)
+      - name: Build Zygisk Native Library (C++)
+        working-directory: cpp_engine
         run: |
-          echo "GradleでJavaとC++をまとめて完全ビルドします..."
+          echo "Building Zygisk native library..."
           chmod +x ./gradlew
-          ./gradlew assembleDebug
+          ./gradlew :UnityFPSUnlocker:assembleDebug
+
+      - name: Copy libUnityFPSUnlocker.so to Xposed jniLibs
+        run: |
+          mkdir -p app/src/main/jniLibs/arm64-v8a
+          cp cpp_engine/UnityFPSUnlocker/build/intermediates/cmake/debug/obj/arm64-v8a/libUnityFPSUnlocker.so \
+             app/src/main/jniLibs/arm64-v8a/libUnityFPSUnlocker.so || echo "Copy failed, check path"
+          ls -la app/src/main/jniLibs/arm64-v8a/
+
+      - name: Build Xposed APK with Gradle
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
