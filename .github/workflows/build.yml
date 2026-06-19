@@ -19,8 +19,44 @@ jobs:
           path: cpp_engine
           submodules: recursive
 
-      - name: Debug - Show inner CMakeLists.txt
-        run: cat cpp_engine/UnityFPSUnlocker/CMakeLists.txt
+      - name: Patch CMakeLists.txt to fetch Abseil
+        run: |
+          CMAKE_FILE="cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
+          echo "=== パッチ前 ==="
+          grep -n "find_package(absl" "$CMAKE_FILE"
+
+          # find_package(absl REQUIRED) の直前に FetchContent ブロックを挿入
+          python3 - <<'PYEOF'
+          import re
+
+          path = "cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
+          with open(path, "r", encoding="utf-8") as f:
+              content = f.read()
+
+          fetch_block = '''include(FetchContent)
+          FetchContent_Declare(
+            absl
+            GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
+            GIT_TAG        20240722.0
+          )
+          set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
+          set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+          set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+          FetchContent_MakeAvailable(absl)
+
+          '''
+
+          content = content.replace(
+              "find_package(absl REQUIRED)",
+              fetch_block + "find_package(absl REQUIRED)"
+          )
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(content)
+          PYEOF
+
+          echo "=== パッチ後 ==="
+          cat "$CMAKE_FILE"
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -37,8 +73,9 @@ jobs:
           cmake ../cpp_engine \
             -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-27
-          make
+            -DANDROID_PLATFORM=android-27 \
+            -DCMAKE_BUILD_TYPE=Release
+          make -j$(nproc)
 
           echo "ビルドした.soファイルを配置します..."
           mkdir -p ../app/src/main/libs/arm64-v8a/
