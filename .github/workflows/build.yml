@@ -25,10 +25,7 @@ jobs:
           echo "=== パッチ前 ==="
           grep -n "find_package(absl" "$CMAKE_FILE"
 
-          # find_package(absl REQUIRED) の直前に FetchContent ブロックを挿入
           python3 - <<'PYEOF'
-          import re
-
           path = "cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
           with open(path, "r", encoding="utf-8") as f:
               content = f.read()
@@ -48,7 +45,7 @@ jobs:
 
           content = content.replace(
               "find_package(absl REQUIRED)",
-              fetch_block + "find_package(absl REQUIRED)"
+              fetch_block.rstrip()
           )
 
           with open(path, "w", encoding="utf-8") as f:
