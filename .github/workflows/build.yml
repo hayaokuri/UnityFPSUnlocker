@@ -43,7 +43,7 @@ jobs:
           content = content.replace("set_target_properties(${LibraryName} PROPERTIES PREFIX \"\")", "# Disabled for Gradle")
           content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled for Gradle")
           
-          # ★新規追加：C++の関数（HelloWorld）をJavaから見えるように隠蔽設定を解除
+          # ★修正4：C++の関数（HelloWorld）をJavaから見えるように隠蔽設定を解除
           content = content.replace("set(CMAKE_C_VISIBILITY_PRESET hidden)", "# Disabled for JNI")
           content = content.replace("set(CMAKE_CXX_VISIBILITY_PRESET hidden)", "# Disabled for JNI")
           
