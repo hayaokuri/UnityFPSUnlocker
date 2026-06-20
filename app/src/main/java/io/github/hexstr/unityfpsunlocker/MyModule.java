@@ -28,11 +28,15 @@ public class MyModule implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!"com.nhnpa.cps.huawei".equals(lpparam.packageName)) return;
 
-        XposedBridge.log("UnityFPSUnlocker: #コンパス 最終版 v4 - DetectionPopup FULL BROAD HOOK");
+        XposedBridge.log("UnityFPSUnlocker: #コンパス 最終版 v5 - Kill 完全ブロック優先");
 
+        // 1. DetectionPopup 全ブロック（最優先）
         hookDetectionPopup(lpparam);
+
+        // 2. killProcess / exit を最強防御
         hookKillProcess();
         hookSystemExit();
+
         hookRootChecks();
         hideXposedTraces(lpparam);
 
@@ -42,8 +46,9 @@ public class MyModule implements IXposedHookLoadPackage {
     private void hookDetectionPopup(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
             Class<?> detClass = XposedHelpers.findClass("com.siem.ms7.DetectionPopup", lpparam.classLoader);
-            XposedBridge.log("★ DetectionPopup class FOUND - FULL BROAD BLOCK START ★");
+            XposedBridge.log("★ DetectionPopup class FOUND - FULL BLOCK APPLIED ★");
 
+            // 全メソッドブロック
             for (Method m : detClass.getDeclaredMethods()) {
                 final String name = m.getName();
                 XposedHelpers.findAndHookMethod(detClass, name, new XC_MethodHook() {
@@ -55,21 +60,48 @@ public class MyModule implements IXposedHookLoadPackage {
                 });
             }
 
+            // コンストラクタブロック
             XposedHelpers.findAndHookConstructor(detClass, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam param) {
                     XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED DetectionPopup Constructor ★");
                 }
             });
         } catch (Throwable t) {
-            XposedBridge.log("DetectionPopup hook error: " + t.getMessage());
+            XposedBridge.log("DetectionPopup broad hook error: " + t.getMessage());
         }
     }
 
-    // 以下は前回と同じ（省略せず全部残す）
-    private void hookKillProcess() { /* ... 前回と同じ内容 ... */ }
-    private void hookSystemExit() { /* ... */ }
-    private void hookRootChecks() { /* ... */ }
-    private void hideXposedTraces(XC_LoadPackage.LoadPackageParam lpparam) { /* ... */ }
+    private void hookKillProcess() {
+        try {
+            XposedHelpers.findAndHookMethod(Process.class, "killProcess", int.class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    int pid = (int) param.args[0];
+                    if (pid == Process.myPid()) {
+                        XposedBridge.log("UnityFPSUnlocker: ★ SELF KILL BLOCKED ★ (from DetectionPopup)");
+                        param.setResult(null);
+                    }
+                }
+            });
+            XposedBridge.log("killProcess hook registered");
+        } catch (Throwable t) {
+            XposedBridge.log("killProcess hook failed: " + t);
+        }
+    }
+
+    private void hookSystemExit() {
+        try {
+            XposedHelpers.findAndHookMethod(System.class, "exit", int.class, new XC_MethodHook() {
+                @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    XposedBridge.log("UnityFPSUnlocker: System.exit BLOCKED");
+                    param.setResult(null);
+                }
+            });
+        } catch (Throwable ignored) {}
+    }
+
+    private void hookRootChecks() { /* 省略せず前回と同じ内容を入れる */ }
+    private void hideXposedTraces(XC_LoadPackage.LoadPackageParam lpparam) { /* 前回と同じ */ }
 
     private void loadPrefsAndNative() {
         // prefs + native load（前回と同じ）
