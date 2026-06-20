@@ -1,4 +1,4 @@
-name: Build Zygisk Module (Stealth Mode)
+name: Build Zygisk Module (Pure C++)
 
 on:
   push:
@@ -14,12 +14,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         with:
@@ -28,8 +22,8 @@ jobs:
       - name: Patch CMakeLists.txt (Abseil fix)
         run: |
           python3 - <<'PYEOF'
-          # CMakeLists.txtの場所（ルートかUnityFPSUnlockerフォルダ内か）を自動で探す
           import os, glob
+          # CMakeLists.txtを自動で探してパッチを当てる
           path = next(glob.iglob("**/CMakeLists.txt", recursive=True), None)
           if path:
               with open(path, "r", encoding="utf-8") as f:
@@ -42,15 +36,43 @@ jobs:
                   f.write(content)
           PYEOF
 
-      - name: Build Zygisk Magisk Module
+      - name: Build with CMake
         run: |
-          echo "Zygiskモジュールとしてのビルドを開始します..."
-          # Zygiskテンプレートの標準ビルドコマンドを実行
-          chmod +x ./gradlew
-          ./gradlew assembleRelease
+          echo "C++エンジンを直接コンパイルします..."
+          mkdir build && cd build
+          # Android NDKを使ってC++をビルド
+          cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+                -DANDROID_ABI=arm64-v8a \
+                -DANDROID_PLATFORM=android-28 \
+                -DCMAKE_BUILD_TYPE=Release \
+                ..
+          cmake --build . --parallel
+
+      - name: Package Magisk Module
+        run: |
+          echo "Magisk/Zygiskモジュールの形にパッケージングします..."
+          mkdir magisk_module
+          cd magisk_module
+          
+          # module.propの作成（Magiskに認識させるための自己紹介ファイル）
+          cat <<EOF > module.prop
+          id=unityfpsunlocker_zygisk
+          name=UnityFPSUnlocker (Zygisk Stealth)
+          version=v1.0
+          versionCode=1
+          author=M2ki
+          description=Unlocks FPS for Unity games via pure Zygisk (No LSPosed).
+          EOF
+          
+          # Zygiskフォルダを作成し、ビルドされた .so ファイルをMagisk指定の名前にリネームして配置
+          mkdir zygisk
+          find ../build -name "*.so" -exec cp {} zygisk/arm64-v8a.so \;
+          
+          # フォルダの中身をZIPファイルに圧縮
+          zip -r9 ../UnityFPSUnlocker-Zygisk-Module.zip .
 
       - name: Upload Magisk Module ZIP
         uses: actions/upload-artifact@v4
         with:
           name: UnityFPSUnlocker-Zygisk-Module
-          path: out/*.zip
+          path: UnityFPSUnlocker-Zygisk-Module.zip
