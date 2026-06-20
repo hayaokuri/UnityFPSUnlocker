@@ -6,7 +6,7 @@ import android.os.Process;
 import android.view.Window;
 import android.view.WindowManager;
 
-import java.lang.reflect.Method; // ★リフレクション用に追加
+import java.lang.reflect.Method;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -54,7 +54,7 @@ public class MyModule implements IXposedHookLoadPackage {
         }
     }
 
-    // ネイティブ関数（C++側と型を合わせたint）
+    // ネイティブ関数
     public static native void HelloWorld(int delay, int fps, int mod_opcode, float scale);
 
     @Override
@@ -71,7 +71,7 @@ public class MyModule implements IXposedHookLoadPackage {
             scale = getFloatPref(settings, "scale", -1);
         }
 
-        // ====================== #コンパス 激強ブロック開始 (Grok+Gemini) ======================
+        // ====================== #コンパス 激強検知ブロック開始 ======================
         if (isCompass) {
             XposedBridge.log("UnityFPSUnlocker: #コンパス 激強検知ブロック開始");
 
@@ -99,7 +99,7 @@ public class MyModule implements IXposedHookLoadPackage {
                 });
             } catch (Throwable t) {}
 
-            // 3. Activity.finish を潰す（Grokの提案：ゲームが正常に閉じられなくなる可能性があるが、強制終了の阻止には最強）
+            // 3. Activity.finish を潰す
             try {
                 XposedHelpers.findAndHookMethod(Activity.class, "finish", new XC_MethodHook() {
                     @Override
@@ -110,12 +110,11 @@ public class MyModule implements IXposedHookLoadPackage {
                 });
             } catch (Throwable t) {}
 
-            // 4. DetectionPopup の全キルスイッチを引数無視で完全に潰す（Geminiの真骨頂）
+            // 4. DetectionPopup の全キルスイッチを引数無視で完全に潰す
             try {
                 Class<?> detClass = XposedHelpers.findClass("com.siem.ms7.DetectionPopup", lpparam.classLoader);
                 String[] criticalMethods = {"finishApp", "Ij11111IlIijjjlil1jliI", "killProcess", "exitApp", "finish", "onDestroy", "shutdown"};
                 
-                // クラス内の全メソッドを舐め回して、名前が一致したら引数に関係なく全部フックする
                 for (Method m : detClass.getDeclaredMethods()) {
                     for (String target : criticalMethods) {
                         if (m.getName().equals(target)) {
@@ -141,6 +140,7 @@ public class MyModule implements IXposedHookLoadPackage {
                     "com.unity3d.player.UnityPlayer",
                     lpparam.classLoader,
                     Context.class,
+                    // ★ここをピリオド(.)に完全修正！★
                     XposedHelpers.findClass("com.unity3d.player.EnumC1199x", lpparam.classLoader),
                     XposedHelpers.findClass("com.unity3d.player.IUnityPlayerLifecycleEvents", lpparam.classLoader),
                     new XC_MethodHook() {
