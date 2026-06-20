@@ -52,7 +52,8 @@ public class MyModule implements IXposedHookLoadPackage {
         }
     }
 
-    public static native void HelloWorld(int delay, int fps, boolean mod_opcode, float scale);
+    // ★修正2：ネイティブ関数の引数「mod_opcode」を boolean から int に変更
+    public static native void HelloWorld(int delay, int fps, int mod_opcode, float scale);
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
@@ -148,7 +149,8 @@ public class MyModule implements IXposedHookLoadPackage {
         // ネイティブライブラリ読み込み
         try {
             System.loadLibrary("UnityFPSUnlocker");
-            HelloWorld(delay, fps, mod_opcode, scale);
+            // ★修正3：booleanの mod_opcode を、1か0の int に変換して渡す
+            HelloWorld(delay, fps, mod_opcode ? 1 : 0, scale);
             XposedBridge.log("UnityFPSUnlocker: Native library loaded successfully");
         } catch (UnsatisfiedLinkError e) {
             XposedBridge.log("UnityFPSUnlocker: Native library load failed: " + e.getMessage());
