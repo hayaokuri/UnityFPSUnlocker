@@ -28,21 +28,35 @@ public class MyModule implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!"com.nhnpa.cps.huawei".equals(lpparam.packageName)) return;
 
-        XposedBridge.log("UnityFPSUnlocker: #コンパス 最終超強化版");
+        XposedBridge.log("UnityFPSUnlocker: #コンパス 最終超強化アンチブロック v2");
 
-        // === DetectionPopup 超広範囲フック ===
+        // DetectionPopup 完全制圧
+        hookDetectionPopup(lpparam);
+
+        // kill / exit / root ブロック
+        hookKillProcess();
+        hookSystemExit();
+        hookRootChecks();
+
+        // Xposed / 検知痕跡隠蔽
+        hideXposedTraces(lpparam);
+
+        loadPrefsAndNative();
+    }
+
+    private void hookDetectionPopup(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
             Class<?> detClass = XposedHelpers.findClass("com.siem.ms7.DetectionPopup", lpparam.classLoader);
-            XposedBridge.log("DetectionPopup class found");
+            XposedBridge.log("DetectionPopup class found - applying full block");
 
-            // 全メソッドを強制ブロック
+            // 全メソッド強制ブロック
             for (Method m : detClass.getDeclaredMethods()) {
                 final String name = m.getName();
                 XposedHelpers.findAndHookMethod(detClass, name, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED DetectionPopup." + name + " ★");
-                        param.setResult(null);  // 強制的に何もしない
+                        param.setResult(null);
                     }
                 });
             }
@@ -55,19 +69,16 @@ public class MyModule implements IXposedHookLoadPackage {
             });
         } catch (Throwable t) {
             XposedBridge.log("DetectionPopup hook failed: " + t.getMessage());
+            // フォールバック: 特定メソッドも狙う
+            try {
+                XposedHelpers.findAndHookMethod("com.siem.ms7.DetectionPopup", lpparam.classLoader, "Ij11111IlIijjjlil1jliI", new XC_MethodHook() {
+                    @Override protected void beforeHookedMethod(MethodHookParam param) {
+                        XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED specific DetectionPopup method ★");
+                        param.setResult(null);
+                    }
+                });
+            } catch (Throwable ignored) {}
         }
-
-        // kill / exit ブロック
-        hookKillProcess();
-        hookSystemExit();
-
-        // root / su ブロック
-        hookRootChecks();
-
-        // Xposed 痕跡隠蔽
-        hideXposedTraces(lpparam);
-
-        loadPrefsAndNative();
     }
 
     private void hookKillProcess() {
@@ -114,8 +125,8 @@ public class MyModule implements IXposedHookLoadPackage {
                 @Override protected void beforeHookedMethod(MethodHookParam param) {
                     String name = (String) param.args[0];
                     if (name != null && (name.contains("xposed") || name.contains("lsposed") || name.contains("siem.ms7"))) {
-                        XposedBridge.log("UnityFPSUnlocker: Blocked suspicious class: " + name);
-                        param.setThrowable(new ClassNotFoundException("blocked"));
+                        XposedBridge.log("UnityFPSUnlocker: Blocked suspicious class load: " + name);
+                        param.setThrowable(new ClassNotFoundException("blocked by UnityFPSUnlocker"));
                     }
                 }
             });
@@ -136,7 +147,7 @@ public class MyModule implements IXposedHookLoadPackage {
             HelloWorld(delay, fps, mod_opcode, scale);
             XposedBridge.log("Native library loaded successfully");
         } catch (UnsatisfiedLinkError e) {
-            XposedBridge.log("Native load skipped");
+            XposedBridge.log("Native load skipped (already handled)");
         }
     }
 }
