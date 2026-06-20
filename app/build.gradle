@@ -3,17 +3,17 @@ plugins {
 }
 
 android {
-    namespace = 'io.github.hexstr.UnityFPSUnlocker'
-    compileSdk = 36
+    namespace 'io.github.hexstr.UnityFPSUnlocker'
+    compileSdk 34 // 36は未安定なので34を推奨
 
     defaultConfig {
-        applicationId = namespace
-        minSdk = 28
-        targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        applicationId "io.github.hexstr.UnityFPSUnlocker" // ★文字列で直接指定！
+        minSdk 28
+        targetSdk 34 // ★ここも34へ
+        versionCode 1
+        versionName "1.0"
 
-        // ★追加：C++をコンパイルするための設定
+        // C++をコンパイルするための設定
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17 -fno-rtti -fno-exceptions"
@@ -23,16 +23,10 @@ android {
         }
     }
 
-    // ★追加：C++のビルド指示書（CMakeLists.txt）の場所をGradleに教える
+    // C++のビルド指示書（CMakeLists.txt）の場所
     externalNativeBuild {
         cmake {
             path "../cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
-        }
-    }
-
-    sourceSets {
-        main {
-            jniLibs.srcDirs = ['src/main/libs']
         }
     }
 
