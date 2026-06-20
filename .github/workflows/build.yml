@@ -8,7 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Xposed Branch (Java Wrapper)
         uses: actions/checkout@v4
@@ -28,55 +27,29 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27
-
-      - name: Patch CMakeLists.txt
+      - name: Patch CMakeLists.txt for Abseil & Output Name
         run: |
           python3 - <<'PYEOF'
           path = "cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
           with open(path, "r", encoding="utf-8") as f:
               content = f.read()
           
-          fetch_block = '''include(FetchContent)
-          FetchContent_Declare(
-            absl
-            GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
-            GIT_TAG 20240722.0
-          )
-          set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
-          set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-          set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-          FetchContent_MakeAvailable(absl)
-          '''
+          # Abseilのエラー回避パッチ
+          fetch_block = '''include(FetchContent)\nFetchContent_Declare(\n  absl\n  GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git\n  GIT_TAG        20240722.0\n)\nset(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)\nset(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)\nset(BUILD_TESTING OFF CACHE BOOL "" FORCE)\nFetchContent_MakeAvailable(absl)\n'''
           content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
+          
+          # Gradleが正しい名前で認識できるように、CMake側のリネーム処理を無効化する
           content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled for Gradle build")
           
           with open(path, "w", encoding="utf-8") as f:
               f.write(content)
           PYEOF
 
-      - name: Build Zygisk Native Library (C++)
-        working-directory: ./cpp_engine/UnityFPSUnlocker
+      - name: Build APK with Gradle (Java + C++ Auto Build)
         run: |
-          echo "Building Zygisk native library..."
-          ls -la
+          echo "GradleでJavaとC++をまとめて完全ビルドします..."
           chmod +x ./gradlew
-          ./gradlew assembleDebug --stacktrace
-
-      - name: Copy libUnityFPSUnlocker.so to Xposed jniLibs
-        run: |
-          mkdir -p app/src/main/jniLibs/arm64-v8a
-          cp cpp_engine/UnityFPSUnlocker/build/intermediates/cmake/debug/obj/arm64-v8a/libUnityFPSUnlocker.so \
-             app/src/main/jniLibs/arm64-v8a/libUnityFPSUnlocker.so || echo "Copy failed - check path"
-          ls -la app/src/main/jniLibs/arm64-v8a/
-
-      - name: Build Xposed APK
-        run: |
-          chmod +x ./gradlew
-          ./gradlew :app:assembleDebug
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
