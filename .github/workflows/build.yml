@@ -62,13 +62,12 @@ jobs:
           
           # Zygiskエンジン(.so)の配置
           mkdir zygisk
-          # ★ここを修正！C++のエンジンが生成された正しいパスからコピーする
           cp ../libs/Release/arm64-v8a.so zygisk/arm64-v8a.so
           
-          # Magisk公式のインストーラー設計図（META-INF）を追加
+          # ★ここを修正！絶対に消えない公式アーカイブのURLに変更
           mkdir -p META-INF/com/google/android
-          curl -sL https://raw.githubusercontent.com/topjohnwu/zygisk-module-sample/master/template/magisk_module/META-INF/com/google/android/update-binary -o META-INF/com/google/android/update-binary
-          curl -sL https://raw.githubusercontent.com/topjohnwu/zygisk-module-sample/master/template/magisk_module/META-INF/com/google/android/updater-script -o META-INF/com/google/android/updater-script
+          curl -sL https://raw.githubusercontent.com/topjohnwu/magisk-module-template/master/META-INF/com/google/android/update-binary -o META-INF/com/google/android/update-binary
+          curl -sL https://raw.githubusercontent.com/topjohnwu/magisk-module-template/master/META-INF/com/google/android/updater-script -o META-INF/com/google/android/updater-script
           chmod +x META-INF/com/google/android/update-binary
           
           # フォルダの中身をZIPファイルに圧縮
