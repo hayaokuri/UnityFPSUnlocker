@@ -62,9 +62,10 @@ jobs:
           
           # Zygiskエンジン(.so)の配置
           mkdir zygisk
-          find ../build -name "*.so" -exec cp {} zygisk/arm64-v8a.so \;
+          # ★ここを修正！C++のエンジンが生成された正しいパスからコピーする
+          cp ../libs/Release/arm64-v8a.so zygisk/arm64-v8a.so
           
-          # ★修正：Magisk公式のインストーラー設計図（META-INF）をダウンロードして追加
+          # Magisk公式のインストーラー設計図（META-INF）を追加
           mkdir -p META-INF/com/google/android
           curl -sL https://raw.githubusercontent.com/topjohnwu/zygisk-module-sample/master/template/magisk_module/META-INF/com/google/android/update-binary -o META-INF/com/google/android/update-binary
           curl -sL https://raw.githubusercontent.com/topjohnwu/zygisk-module-sample/master/template/magisk_module/META-INF/com/google/android/updater-script -o META-INF/com/google/android/updater-script
