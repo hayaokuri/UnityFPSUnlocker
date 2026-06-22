@@ -1,64 +1,173 @@
-name: Build Xposed App
+package io.github.hexstr.UnityFPSUnlocker;
 
-on:
-  push:
-    branches: [ "xposed" ] # アプリ版のブランチ名に合わせてね
-  workflow_dispatch:
+import android.app.Activity;
+import android.content.Context;
+import android.content.SharedPreferences; // ★追加：標準のSharedPreferencesをインポート
+import android.os.Process;
+import android.view.Display;
+import android.view.Window;
+import android.view.WindowManager;
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+import java.lang.reflect.Method;
 
-      - name: Checkout Zygisk Branch (C++ Engine)
-        uses: actions/checkout@v4
-        with:
-          ref: zygisk_module
-          path: cpp_engine
-          submodules: recursive
+import de.robv.android.xposed.IXposedHookLoadPackage;
+import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XSharedPreferences;
+import de.robv.android.xposed.XposedBridge;
+import de.robv.android.xposed.XposedHelpers;
+import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+public class MyModule implements IXposedHookLoadPackage {
 
-      - name: Patch CMakeLists.txt for Gradle
-        run: |
-          python3 - <<'PYEOF'
-          path = "cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
-          import os
-          if os.path.exists(path):
-              with open(path, "r", encoding="utf-8") as f:
-                  content = f.read()
-              
-              fetch_block = '''include(FetchContent)\nFetchContent_Declare(\n  absl\n  GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git\n  GIT_TAG        20240722.0\n)\nset(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)\nset(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)\nset(BUILD_TESTING OFF CACHE BOOL "" FORCE)\nFetchContent_MakeAvailable(absl)\n'''
-              content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
-              
-              # Gradle用に設定を無効化し、JNI用に隠蔽を解除
-              content = content.replace("set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/libs/${CMAKE_BUILD_TYPE}/)", "# Disabled")
-              content = content.replace("set_target_properties(${LibraryName} PROPERTIES PREFIX \"\")", "# Disabled")
-              content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled")
-              content = content.replace("set(CMAKE_C_VISIBILITY_PRESET hidden)", "# Disabled")
-              content = content.replace("set(CMAKE_CXX_VISIBILITY_PRESET hidden)", "# Disabled")
-              
-              with open(path, "w", encoding="utf-8") as f:
-                  f.write(content)
-          PYEOF
+    private int display_mode_id = -1;
+    private int delay = 5;
+    private int fps = 90;
+    private boolean mod_opcode = true;
+    private float scale = -1;
 
-      - name: Build APK with Gradle
-        run: |
-          # テストアプリ判定を消す魔法の1行
-          echo "android.injected.testOnly=false" >> gradle.properties
-          chmod +x ./gradlew
-          ./gradlew assembleDebug
+    private static XSharedPreferences getPref(String path) {
+        XSharedPreferences pref = new XSharedPreferences(BuildConfig.APPLICATION_ID, path);
+        return pref.getFile().canRead() ? pref : null;
+    }
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: UnityFPSUnlocker-App
-          path: app/build/outputs/apk/debug/*.apk
+    // ★修正：SharedPreferencesにキャストしてコンパイルエラーを回避
+    private static int getIntPref(XSharedPreferences settings, String key, int fallback) {
+        try {
+            SharedPreferences prefs = (SharedPreferences) settings;
+            return Integer.parseInt(prefs.getString(key, String.valueOf(fallback)));
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    // ★修正：こちらも同様にキャスト
+    private static float getFloatPref(XSharedPreferences settings, String key, float fallback) {
+        try {
+            SharedPreferences prefs = (SharedPreferences) settings;
+            return Float.parseFloat(prefs.getString(key, String.valueOf(fallback)));
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    public static native void HelloWorld(int delay, int fps, int mod_opcode, float scale);
+
+    @Override
+    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
+        String package_name = lpparam.packageName;
+        boolean isCompass = "com.nhnpa.cps.huawei".equals(package_name);
+
+        XSharedPreferences settings = getPref("fps_prefs");
+        if (settings != null) {
+            display_mode_id = getIntPref(settings, "display_mode_id", -1);
+            delay = getIntPref(settings, "delay", 5);
+            fps = getIntPref(settings, "fps", 90);
+            mod_opcode = settings.getBoolean("mod_opcode", true);
+            scale = getFloatPref(settings, "scale", -1);
+        }
+
+        if (isCompass) {
+            XposedBridge.log("UnityFPSUnlocker: #コンパス 激強検知ブロック ＆ 偽装開始");
+
+            // ディスプレイのリフレッシュレート偽装（アンチチートに60.0fpsだと勘違いさせる）
+            try {
+                XposedHelpers.findAndHookMethod(Display.class, "getRefreshRate", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        param.setResult(60.0f);
+                    }
+                });
+            } catch (Throwable t) {}
+
+            // 1. Process.killProcess 潰し
+            try {
+                XposedHelpers.findAndHookMethod(Process.class, "killProcess", int.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if ((int)param.args[0] == Process.myPid()) {
+                            XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED Process.killProcess ★");
+                            param.setResult(null);
+                        }
+                    }
+                });
+            } catch (Throwable t) {}
+
+            // 2. System.exit 潰し
+            try {
+                XposedHelpers.findAndHookMethod(System.class, "exit", int.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED System.exit ★");
+                        param.setResult(null);
+                    }
+                });
+            } catch (Throwable t) {}
+
+            // 3. Activity.finish 潰し
+            try {
+                XposedHelpers.findAndHookMethod(Activity.class, "finish", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED Activity.finish ★");
+                        param.setResult(null);
+                    }
+                });
+            } catch (Throwable t) {}
+
+            // 4. DetectionPopup の全キルスイッチ完全無効化
+            try {
+                Class<?> detClass = XposedHelpers.findClass("com.siem.ms7.DetectionPopup", lpparam.classLoader);
+                String[] criticalMethods = {"finishApp", "Ij11111IlIijjjlil1jliI", "killProcess", "exitApp", "finish", "onDestroy", "shutdown"};
+                for (Method m : detClass.getDeclaredMethods()) {
+                    for (String target : criticalMethods) {
+                        if (m.getName().equals(target)) {
+                            XposedBridge.hookMethod(m, new XC_MethodHook() {
+                                @Override
+                                protected void beforeHookedMethod(MethodHookParam param) {
+                                    XposedBridge.log("UnityFPSUnlocker: ★ CRITICAL BLOCK " + m.getName() + " ★");
+                                    param.setResult(null);
+                                }
+                            });
+                        }
+                    }
+                }
+            } catch (Throwable t) {}
+        }
+
+        // UnityPlayer Hook
+        try {
+            XposedHelpers.findAndHookConstructor(
+                    "com.unity3d.player.UnityPlayer",
+                    lpparam.classLoader,
+                    Context.class,
+                    XposedHelpers.findClass("com.unity3d.player.EnumC1199x", lpparam.classLoader),
+                    XposedHelpers.findClass("com.unity3d.player.IUnityPlayerLifecycleEvents", lpparam.classLoader),
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            Object contextObj = param.args[0];
+                            if (contextObj instanceof Activity) {
+                                Activity activity = (Activity) contextObj;
+                                if (activity != null && display_mode_id != -1) {
+                                    Window window = activity.getWindow();
+                                    WindowManager.LayoutParams params = window.getAttributes();
+                                    params.preferredDisplayModeId = display_mode_id;
+                                    window.setAttributes(params);
+                                }
+                            }
+                        }
+                    });
+        } catch (Throwable t) {
+            XposedBridge.log("UnityFPSUnlocker Hook failed: " + t.getMessage());
+        }
+
+        // ネイティブライブラリ読み込み
+        try {
+            System.loadLibrary("UnityFPSUnlocker");
+            HelloWorld(delay, fps, mod_opcode ? 1 : 0, scale);
+            XposedBridge.log("UnityFPSUnlocker: Native library loaded successfully");
+        } catch (UnsatisfiedLinkError e) {
+            XposedBridge.log("UnityFPSUnlocker: Native library load failed: " + e.getMessage());
+        }
+    }
+}
