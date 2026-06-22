@@ -1,173 +1,162 @@
 package io.github.hexstr.UnityFPSUnlocker;
 
-import android.app.Activity;
-import android.content.Context;
-import android.content.SharedPreferences; // ★追加：標準のSharedPreferencesをインポート
 import android.os.Process;
-import android.view.Display;
-import android.view.Window;
-import android.view.WindowManager;
-
 import java.lang.reflect.Method;
-
-import de.robv.android.xposed.IXposedHookLoadPackage;
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XSharedPreferences;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import de.robv.android.xposed.*;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class MyModule implements IXposedHookLoadPackage {
 
-    private int display_mode_id = -1;
     private int delay = 5;
-    private int fps = 90;
+    private int fps = 30;           // ← ここを30に固定テスト
     private boolean mod_opcode = true;
-    private float scale = -1;
+    private float scale = -1.0f;
 
     private static XSharedPreferences getPref(String path) {
         XSharedPreferences pref = new XSharedPreferences(BuildConfig.APPLICATION_ID, path);
         return pref.getFile().canRead() ? pref : null;
     }
 
-    // ★修正：SharedPreferencesにキャストしてコンパイルエラーを回避
     private static int getIntPref(XSharedPreferences settings, String key, int fallback) {
-        try {
-            SharedPreferences prefs = (SharedPreferences) settings;
-            return Integer.parseInt(prefs.getString(key, String.valueOf(fallback)));
-        } catch (Exception e) {
-            return fallback;
-        }
+        try { return Integer.parseInt(settings.getString(key, String.valueOf(fallback))); } 
+        catch (Exception e) { return fallback; }
     }
 
-    // ★修正：こちらも同様にキャスト
-    private static float getFloatPref(XSharedPreferences settings, String key, float fallback) {
-        try {
-            SharedPreferences prefs = (SharedPreferences) settings;
-            return Float.parseFloat(prefs.getString(key, String.valueOf(fallback)));
-        } catch (Exception e) {
-            return fallback;
-        }
-    }
-
-    public static native void HelloWorld(int delay, int fps, int mod_opcode, float scale);
+    public static native void HelloWorld(int delay, int fps, boolean mod_opcode, float scale);
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
-        String package_name = lpparam.packageName;
-        boolean isCompass = "com.nhnpa.cps.huawei".equals(package_name);
+        if (!"com.nhnpa.cps.huawei".equals(lpparam.packageName)) return;
 
-        XSharedPreferences settings = getPref("fps_prefs");
-        if (settings != null) {
-            display_mode_id = getIntPref(settings, "display_mode_id", -1);
-            delay = getIntPref(settings, "delay", 5);
-            fps = getIntPref(settings, "fps", 90);
-            mod_opcode = settings.getBoolean("mod_opcode", true);
-            scale = getFloatPref(settings, "scale", -1);
-        }
+        XposedBridge.log("UnityFPSUnlocker: #コンパス v7 - 30fps強制 + 完全制圧");
 
-        if (isCompass) {
-            XposedBridge.log("UnityFPSUnlocker: #コンパス 激強検知ブロック ＆ 偽装開始");
+        hookDetectionPopupFull(lpparam);
+        hookKillProcess();
+        hookSystemExit();
+        hookActivityFinish();
+        hookRootChecks();
+        hideXposedTraces(lpparam);
 
-            // ディスプレイのリフレッシュレート偽装（アンチチートに60.0fpsだと勘違いさせる）
-            try {
-                XposedHelpers.findAndHookMethod(Display.class, "getRefreshRate", new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        param.setResult(60.0f);
-                    }
-                });
-            } catch (Throwable t) {}
+        loadPrefsAndNative();
+    }
 
-            // 1. Process.killProcess 潰し
-            try {
-                XposedHelpers.findAndHookMethod(Process.class, "killProcess", int.class, new XC_MethodHook() {
+    private void hookDetectionPopupFull(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            Class<?> detClass = XposedHelpers.findClass("com.siem.ms7.DetectionPopup", lpparam.classLoader);
+            XposedBridge.log("★ DetectionPopup class FOUND - FULL BLOCK v7 ★");
+
+            for (Method m : detClass.getDeclaredMethods()) {
+                final String name = m.getName();
+                XposedHelpers.findAndHookMethod(detClass, name, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        if ((int)param.args[0] == Process.myPid()) {
-                            XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED Process.killProcess ★");
+                        XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED DetectionPopup." + name + " ★");
+                        param.setResult(null);
+                    }
+                });
+            }
+
+            // 特に重要なメソッドを再確保
+            String[] critical = {"Ij11111IlIijjjlil1jliI", "finishApp", "killProcess", "exitApp", "finish", "shutdown"};
+            for (String name : critical) {
+                try {
+                    XposedHelpers.findAndHookMethod(detClass, name, new XC_MethodHook() {
+                        @Override protected void beforeHookedMethod(MethodHookParam param) {
+                            XposedBridge.log("UnityFPSUnlocker: ★ CRITICAL BLOCK " + name + " ★");
                             param.setResult(null);
                         }
-                    }
-                });
-            } catch (Throwable t) {}
+                    });
+                } catch (Throwable ignored) {}
+            }
 
-            // 2. System.exit 潰し
-            try {
-                XposedHelpers.findAndHookMethod(System.class, "exit", int.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED System.exit ★");
+            // コンストラクタ
+            XposedHelpers.findAndHookConstructor(detClass, new XC_MethodHook() {
+                @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED DetectionPopup Constructor ★");
+                }
+            });
+        } catch (Throwable t) {
+            XposedBridge.log("DetectionPopup hook error: " + t.getMessage());
+        }
+    }
+
+    private void hookKillProcess() {
+        try {
+            XposedHelpers.findAndHookMethod(Process.class, "killProcess", int.class, new XC_MethodHook() {
+                @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    if ((int) param.args[0] == Process.myPid()) {
+                        XposedBridge.log("UnityFPSUnlocker: ★ SELF KILL BLOCKED ★");
                         param.setResult(null);
-                    }
-                });
-            } catch (Throwable t) {}
-
-            // 3. Activity.finish 潰し
-            try {
-                XposedHelpers.findAndHookMethod(Activity.class, "finish", new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED Activity.finish ★");
-                        param.setResult(null);
-                    }
-                });
-            } catch (Throwable t) {}
-
-            // 4. DetectionPopup の全キルスイッチ完全無効化
-            try {
-                Class<?> detClass = XposedHelpers.findClass("com.siem.ms7.DetectionPopup", lpparam.classLoader);
-                String[] criticalMethods = {"finishApp", "Ij11111IlIijjjlil1jliI", "killProcess", "exitApp", "finish", "onDestroy", "shutdown"};
-                for (Method m : detClass.getDeclaredMethods()) {
-                    for (String target : criticalMethods) {
-                        if (m.getName().equals(target)) {
-                            XposedBridge.hookMethod(m, new XC_MethodHook() {
-                                @Override
-                                protected void beforeHookedMethod(MethodHookParam param) {
-                                    XposedBridge.log("UnityFPSUnlocker: ★ CRITICAL BLOCK " + m.getName() + " ★");
-                                    param.setResult(null);
-                                }
-                            });
-                        }
                     }
                 }
-            } catch (Throwable t) {}
-        }
+            });
+        } catch (Throwable ignored) {}
+    }
 
-        // UnityPlayer Hook
+    private void hookSystemExit() {
         try {
-            XposedHelpers.findAndHookConstructor(
-                    "com.unity3d.player.UnityPlayer",
-                    lpparam.classLoader,
-                    Context.class,
-                    XposedHelpers.findClass("com.unity3d.player.EnumC1199x", lpparam.classLoader),
-                    XposedHelpers.findClass("com.unity3d.player.IUnityPlayerLifecycleEvents", lpparam.classLoader),
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            Object contextObj = param.args[0];
-                            if (contextObj instanceof Activity) {
-                                Activity activity = (Activity) contextObj;
-                                if (activity != null && display_mode_id != -1) {
-                                    Window window = activity.getWindow();
-                                    WindowManager.LayoutParams params = window.getAttributes();
-                                    params.preferredDisplayModeId = display_mode_id;
-                                    window.setAttributes(params);
-                                }
-                            }
-                        }
-                    });
-        } catch (Throwable t) {
-            XposedBridge.log("UnityFPSUnlocker Hook failed: " + t.getMessage());
-        }
+            XposedHelpers.findAndHookMethod(System.class, "exit", int.class, new XC_MethodHook() {
+                @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    XposedBridge.log("UnityFPSUnlocker: ★ System.exit BLOCKED ★");
+                    param.setResult(null);
+                }
+            });
+        } catch (Throwable ignored) {}
+    }
 
-        // ネイティブライブラリ読み込み
+    private void hookActivityFinish() {
+        try {
+            XposedHelpers.findAndHookMethod("android.app.Activity", "finish", new XC_MethodHook() {
+                @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    XposedBridge.log("UnityFPSUnlocker: ★ Activity.finish BLOCKED ★");
+                    param.setResult(null);
+                }
+            });
+        } catch (Throwable ignored) {}
+    }
+
+    private void hookRootChecks() {
+        try {
+            XposedHelpers.findAndHookMethod(Runtime.class, "exec", String.class, new XC_MethodHook() {
+                @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    String cmd = (String) param.args[0];
+                    if (cmd != null && (cmd.contains("su") || cmd.contains("magisk"))) {
+                        XposedBridge.log("UnityFPSUnlocker: Blocked root: " + cmd);
+                        param.setResult(null);
+                    }
+                }
+            });
+        } catch (Throwable ignored) {}
+    }
+
+    private void hideXposedTraces(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            XposedHelpers.findAndHookMethod(ClassLoader.class, "loadClass", String.class, new XC_MethodHook() {
+                @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    String name = (String) param.args[0];
+                    if (name != null && (name.contains("xposed") || name.contains("lsposed") || name.contains("siem.ms7"))) {
+                        XposedBridge.log("UnityFPSUnlocker: Blocked trace: " + name);
+                        param.setThrowable(new ClassNotFoundException("blocked"));
+                    }
+                }
+            });
+        } catch (Throwable ignored) {}
+    }
+
+    private void loadPrefsAndNative() {
+        XSharedPreferences settings = getPref("fps_prefs");
+        if (settings != null) {
+            fps = getIntPref(settings, "fps", 30);
+            mod_opcode = settings.getBoolean("mod_opcode", true);
+        }
+        XposedBridge.log("UnityFPSUnlocker: fps=" + fps + " mod_opcode=" + mod_opcode);
+
         try {
             System.loadLibrary("UnityFPSUnlocker");
-            HelloWorld(delay, fps, mod_opcode ? 1 : 0, scale);
-            XposedBridge.log("UnityFPSUnlocker: Native library loaded successfully");
+            HelloWorld(delay, fps, mod_opcode, scale);
+            XposedBridge.log("Native library loaded successfully");
         } catch (UnsatisfiedLinkError e) {
-            XposedBridge.log("UnityFPSUnlocker: Native library load failed: " + e.getMessage());
+            XposedBridge.log("Native load failed: " + e.getMessage());
         }
     }
 }
