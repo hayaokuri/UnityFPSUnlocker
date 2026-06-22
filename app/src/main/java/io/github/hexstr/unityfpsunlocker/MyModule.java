@@ -8,7 +8,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public class MyModule implements IXposedHookLoadPackage {
 
     private int delay = 5;
-    private int fps = 30;           // ← ここを30に固定テスト
+    private int fps = 30;           // 30fpsテスト
     private boolean mod_opcode = true;
     private float scale = -1.0f;
 
@@ -28,12 +28,12 @@ public class MyModule implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!"com.nhnpa.cps.huawei".equals(lpparam.packageName)) return;
 
-        XposedBridge.log("UnityFPSUnlocker: #コンパス v7 - 30fps強制 + 完全制圧");
+        XposedBridge.log("UnityFPSUnlocker: #コンパス v7 - 30fps + 完全制圧");
 
         hookDetectionPopupFull(lpparam);
         hookKillProcess();
         hookSystemExit();
-        hookActivityFinish();
+        hookActivityFinish(lpparam);   // ← 修正済み
         hookRootChecks();
         hideXposedTraces(lpparam);
 
@@ -48,15 +48,13 @@ public class MyModule implements IXposedHookLoadPackage {
             for (Method m : detClass.getDeclaredMethods()) {
                 final String name = m.getName();
                 XposedHelpers.findAndHookMethod(detClass, name, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
+                    @Override protected void beforeHookedMethod(MethodHookParam param) {
                         XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED DetectionPopup." + name + " ★");
                         param.setResult(null);
                     }
                 });
             }
 
-            // 特に重要なメソッドを再確保
             String[] critical = {"Ij11111IlIijjjlil1jliI", "finishApp", "killProcess", "exitApp", "finish", "shutdown"};
             for (String name : critical) {
                 try {
@@ -69,7 +67,6 @@ public class MyModule implements IXposedHookLoadPackage {
                 } catch (Throwable ignored) {}
             }
 
-            // コンストラクタ
             XposedHelpers.findAndHookConstructor(detClass, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam param) {
                     XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED DetectionPopup Constructor ★");
@@ -104,14 +101,15 @@ public class MyModule implements IXposedHookLoadPackage {
         } catch (Throwable ignored) {}
     }
 
-    private void hookActivityFinish() {
+    private void hookActivityFinish(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
-            XposedHelpers.findAndHookMethod("android.app.Activity", "finish", new XC_MethodHook() {
-                @Override protected void beforeHookedMethod(MethodHookParam param) {
-                    XposedBridge.log("UnityFPSUnlocker: ★ Activity.finish BLOCKED ★");
-                    param.setResult(null);
-                }
-            });
+            XposedHelpers.findAndHookMethod("android.app.Activity", lpparam.classLoader, "finish", 
+                new XC_MethodHook() {
+                    @Override protected void beforeHookedMethod(MethodHookParam param) {
+                        XposedBridge.log("UnityFPSUnlocker: ★ Activity.finish BLOCKED ★");
+                        param.setResult(null);
+                    }
+                });
         } catch (Throwable ignored) {}
     }
 
