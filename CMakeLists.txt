@@ -5,11 +5,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 隠蔽設定
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-# Abseil (FetchContentで確実に取得)
+# === Abseil (FetchContentで確実にビルド) ===
 include(FetchContent)
 FetchContent_Declare(
   absl
@@ -21,7 +20,7 @@ set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(absl)
 
-# 元の設定を維持
+# === ソースファイル設定（元のプロジェクト構造に合わせる）===
 set(LibraryName UnityFPSUnlocker)
 
 include_directories(
@@ -49,9 +48,14 @@ add_library(${LibraryName} SHARED
 )
 
 find_library(log-lib log)
-target_link_libraries(${LibraryName} ${log-lib} absl::status absl::statusor absl::flat_hash_set)
+target_link_libraries(${LibraryName} PRIVATE 
+    ${log-lib} 
+    absl::status 
+    absl::statusor 
+    absl::flat_hash_set
+)
 
-# Zygisk用出力設定（重要）
+# === Zygisk用出力設定 ===
 set_target_properties(${LibraryName} PROPERTIES
     PREFIX "lib"
     OUTPUT_NAME "UnityFPSUnlocker"
