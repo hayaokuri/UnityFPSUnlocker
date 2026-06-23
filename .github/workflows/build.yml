@@ -9,9 +9,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Zygisk Engine
+      - name: Checkout Zygisk Branch
         uses: actions/checkout@v4
         with:
+          ref: zygisk_module
           submodules: recursive
 
       - name: Setup Android NDK
@@ -19,62 +20,61 @@ jobs:
         with:
           ndk-version: r27
 
-      - name: Patch CMakeLists.txt (Abseil fix)
+      - name: Patch CMakeLists.txt (Abseil fix + Output Name)
         run: |
           python3 - <<'PYEOF'
           path = "UnityFPSUnlocker/CMakeLists.txt"
           with open(path, "r", encoding="utf-8") as f:
               content = f.read()
           
-          fetch_block = '''include(FetchContent)\nFetchContent_Declare(\n  absl\n  GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git\n  GIT_TAG        20240722.0\n)\nset(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)\nset(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)\nset(BUILD_TESTING OFF CACHE BOOL "" FORCE)\nFetchContent_MakeAvailable(absl)\n'''
+          # Abseil fix
+          fetch_block = '''include(FetchContent)\nFetchContent_Declare(\n  absl\n  GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git\n  GIT_TAG 20240722.0\n)\nset(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)\nset(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)\nset(BUILD_TESTING OFF CACHE BOOL "" FORCE)\nFetchContent_MakeAvailable(absl)\n'''
           content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
+          
+          # Output name fix for Zygisk
+          content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled for Zygisk")
           
           with open(path, "w", encoding="utf-8") as f:
               f.write(content)
           PYEOF
 
-      - name: Build with CMake
+      - name: Build Native Library
         run: |
-          echo "C++エンジンを直接コンパイルします..."
-          mkdir build && cd build
+          cd UnityFPSUnlocker
+          mkdir -p build && cd build
           cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
                 -DANDROID_ABI=arm64-v8a \
                 -DANDROID_PLATFORM=android-28 \
-                -DCMAKE_BUILD_TYPE=Release \
-                ..
+                -DCMAKE_BUILD_TYPE=Release ..
           cmake --build . --parallel
+          
+          # Zygisk用にコピー
+          mkdir -p ../../magisk_module/zygisk
+          cp libUnityFPSUnlocker.so ../../magisk_module/zygisk/arm64-v8a.so || cp *.so ../../magisk_module/zygisk/arm64-v8a.so
 
-      - name: Package Magisk Module
+      - name: Package Magisk Zygisk Module
         run: |
-          echo "Magisk/Zygiskモジュールの形にパッケージングします..."
-          mkdir magisk_module
           cd magisk_module
           
-          # module.propの作成
-          cat <<EOF > module.prop
+          cat > module.prop <<EOF
           id=unityfpsunlocker_zygisk
-          name=UnityFPSUnlocker (Zygisk Stealth)
-          version=v1.0
-          versionCode=1
+          name=UnityFPSUnlocker Zygisk (Stealth)
+          version=v12-zygisk
+          versionCode=12
           author=M2ki
-          description=Unlocks FPS for Unity games via pure Zygisk (No LSPosed).
+          description=#コンパス 60fps解除 + アンチチート回避 (Zygisk)
           EOF
           
-          # Zygiskエンジン(.so)の配置
-          mkdir zygisk
-          cp ../libs/Release/arm64-v8a.so zygisk/arm64-v8a.so
-          
-          # ★ここを修正！絶対に消えない公式アーカイブのURLに変更
           mkdir -p META-INF/com/google/android
-          curl -sL https://raw.githubusercontent.com/topjohnwu/magisk-module-template/master/META-INF/com/google/android/update-binary -o META-INF/com/google/android/update-binary
-          curl -sL https://raw.githubusercontent.com/topjohnwu/magisk-module-template/master/META-INF/com/google/android/updater-script -o META-INF/com/google/android/updater-script
+          # update-binaryは簡易版で
+          echo '#!/sbin/sh' > META-INF/com/google/android/update-binary
+          echo 'echo "UnityFPSUnlocker Zygisk installed"' >> META-INF/com/google/android/update-binary
           chmod +x META-INF/com/google/android/update-binary
           
-          # フォルダの中身をZIPファイルに圧縮
-          zip -r9 ../UnityFPSUnlocker-Zygisk-Module.zip .
+          zip -r9 ../UnityFPSUnlocker-Zygisk.zip .
 
-      - name: Upload Magisk Module ZIP
+      - name: Upload Zygisk Module
         uses: actions/upload-artifact@v4
         with:
-          name: UnityFPSUnlocker-Zygisk-Module
-          path: UnityFPSUnlocker-Zygisk-Module.zip
+          name: UnityFPSUnlocker-Zygisk
+          path: UnityFPSUnlocker-Zygisk.zip
