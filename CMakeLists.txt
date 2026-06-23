@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# 隠蔽設定
+set(CMAKE_C_VISIBILITY_PRESET hidden)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+
 # Abseil
 include(FetchContent)
 FetchContent_Declare(
@@ -17,23 +21,45 @@ set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(absl)
 
-# メインライブラリ
-add_library(UnityFPSUnlocker SHARED
-  main.cpp
-  # 他の .cpp ファイルがあればここに追加
+# ソースファイル自動収集（元の構造に合わせる）
+set(LibraryName UnityFPSUnlocker)
+
+include_directories(
+    .
+    "third/rapidjson"
+    "third/xdl"
 )
 
-target_link_libraries(UnityFPSUnlocker PRIVATE absl::base absl::strings)
+aux_source_directory(\( {CMAKE_CURRENT_SOURCE_DIR}/ \){LibraryName} program-src)
+aux_source_directory(unity unity-src)
+aux_source_directory(utility utility-src)
+aux_source_directory(third/xdl xdl-src)
+aux_source_directory(third/riru_hide riru_hide-src)
+aux_source_directory(file_watch listener-src)
+aux_source_directory(file_watch/dispatcher dispatcher-src)
 
-# Zygisk用に明確な名前
-set_target_properties(UnityFPSUnlocker PROPERTIES
-  OUTPUT_NAME "UnityFPSUnlocker"
-  SUFFIX ".so"
-  PREFIX "lib"
+add_library(${LibraryName} SHARED
+    ${program-src}
+    ${unity-src}
+    ${utility-src}
+    ${listener-src}
+    ${dispatcher-src}
+    ${xdl-src}
+    ${riru_hide-src}
+)
+
+find_library(log-lib log)
+target_link_libraries(${LibraryName} ${log-lib} absl::status absl::statusor absl::flat_hash_set)
+
+# Zygisk用出力設定
+set_target_properties(${LibraryName} PROPERTIES
+    PREFIX "lib"
+    OUTPUT_NAME "UnityFPSUnlocker"
+    SUFFIX ".so"
 )
 
 if(ANDROID)
-  target_compile_options(UnityFPSUnlocker PRIVATE -fvisibility=hidden -O3)
+    target_compile_options(${LibraryName} PRIVATE -O3 -fvisibility=hidden)
 endif()
 
-message(STATUS "UnityFPSUnlocker build configured for Zygisk")
+message(STATUS "✅ UnityFPSUnlocker Zygisk build ready")
