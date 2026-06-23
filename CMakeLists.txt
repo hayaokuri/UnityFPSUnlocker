@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-# Abseil
+# Abseil (FetchContentで確実に取得)
 include(FetchContent)
 FetchContent_Declare(
   absl
@@ -21,7 +21,7 @@ set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(absl)
 
-# ソースファイル自動収集（元の構造に合わせる）
+# 元の設定を維持
 set(LibraryName UnityFPSUnlocker)
 
 include_directories(
@@ -30,7 +30,7 @@ include_directories(
     "third/xdl"
 )
 
-aux_source_directory(\( {CMAKE_CURRENT_SOURCE_DIR}/ \){LibraryName} program-src)
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/${LibraryName} program-src)
 aux_source_directory(unity unity-src)
 aux_source_directory(utility utility-src)
 aux_source_directory(third/xdl xdl-src)
@@ -51,7 +51,7 @@ add_library(${LibraryName} SHARED
 find_library(log-lib log)
 target_link_libraries(${LibraryName} ${log-lib} absl::status absl::statusor absl::flat_hash_set)
 
-# Zygisk用出力設定
+# Zygisk用出力設定（重要）
 set_target_properties(${LibraryName} PROPERTIES
     PREFIX "lib"
     OUTPUT_NAME "UnityFPSUnlocker"
@@ -62,4 +62,4 @@ if(ANDROID)
     target_compile_options(${LibraryName} PRIVATE -O3 -fvisibility=hidden)
 endif()
 
-message(STATUS "✅ UnityFPSUnlocker Zygisk build ready")
+message(STATUS "✅ UnityFPSUnlocker Zygisk build configured successfully")
