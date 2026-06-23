@@ -20,21 +20,22 @@ jobs:
         with:
           ndk-version: r27
 
-      - name: Build Native
+      - name: Build Native Library
         run: |
           cd UnityFPSUnlocker
+          rm -rf build
           mkdir -p build && cd build
           cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
                 -DANDROID_ABI=arm64-v8a \
                 -DANDROID_PLATFORM=android-28 \
                 -DCMAKE_BUILD_TYPE=Release ..
-          cmake --build . --parallel
+          cmake --build . --parallel --verbose
 
           # 確実にコピー
           mkdir -p ../../magisk_module/zygisk
-          cp -v *.so ../../magisk_module/zygisk/arm64-v8a.so || echo "No .so found!"
+          cp -v libUnityFPSUnlocker.so ../../magisk_module/zygisk/arm64-v8a.so 2>/dev/null || echo "Warning: .so not found"
 
-      - name: Package Module
+      - name: Package Magisk Module
         run: |
           cd magisk_module
           cat > module.prop <<EOF
@@ -43,11 +44,11 @@ jobs:
           version=v12-zygisk
           versionCode=12
           author=M2ki
-          description=#コンパス FPS Unlock + Anti Detection (Zygisk)
+          description=#コンパス 60fps + Anti-Detection (Zygisk)
           EOF
 
           mkdir -p META-INF/com/google/android
-          echo '#!/sbin/sh\necho "Zygisk module installed"' > META-INF/com/google/android/update-binary
+          echo '#!/sbin/sh\necho "UnityFPSUnlocker Zygisk installed"' > META-INF/com/google/android/update-binary
           chmod +x META-INF/com/google/android/update-binary
 
           zip -r9 ../UnityFPSUnlocker-Zygisk.zip .
