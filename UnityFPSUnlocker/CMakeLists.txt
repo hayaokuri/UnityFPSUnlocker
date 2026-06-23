@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-# === Abseil (FetchContentで確実にビルド) ===
+# Abseil
 include(FetchContent)
 FetchContent_Declare(
   absl
@@ -20,7 +20,6 @@ set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(absl)
 
-# === ソースファイル設定（元のプロジェクト構造に合わせる）===
 set(LibraryName UnityFPSUnlocker)
 
 include_directories(
@@ -29,7 +28,7 @@ include_directories(
     "third/xdl"
 )
 
-aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/${LibraryName} program-src)
+aux_source_directory(\( {CMAKE_CURRENT_SOURCE_DIR}/ \){LibraryName} program-src)
 aux_source_directory(unity unity-src)
 aux_source_directory(utility utility-src)
 aux_source_directory(third/xdl xdl-src)
@@ -55,7 +54,6 @@ target_link_libraries(${LibraryName} PRIVATE
     absl::flat_hash_set
 )
 
-# === Zygisk用出力設定 ===
 set_target_properties(${LibraryName} PROPERTIES
     PREFIX "lib"
     OUTPUT_NAME "UnityFPSUnlocker"
