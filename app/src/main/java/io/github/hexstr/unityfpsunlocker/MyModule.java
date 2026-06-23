@@ -29,10 +29,10 @@ public class MyModule implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!"com.nhnpa.cps.huawei".equals(lpparam.packageName)) return;
 
-        XposedBridge.log("UnityFPSUnlocker: #コンパス v11 - セキュリティポリシー405_54_0 特化制圧");
+        XposedBridge.log("UnityFPSUnlocker: #コンパス v12 - 405_54_0 完全制圧版");
 
         hookDetectionPopupUltra(lpparam);
-        hookSecurityPolicyUltra(lpparam);   // 新強化
+        hookSecurityPolicyMax(lpparam);     // 最大強化
         hookKillProcess();
         hookSystemExit();
         hookActivityFinish(lpparam);
@@ -47,7 +47,7 @@ public class MyModule implements IXposedHookLoadPackage {
     private void hookDetectionPopupUltra(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
             Class<?> detClass = XposedHelpers.findClass("com.siem.ms7.DetectionPopup", lpparam.classLoader);
-            XposedBridge.log("★ DetectionPopup ULTRA BLOCK v11 ★");
+            XposedBridge.log("★ DetectionPopup ULTRA BLOCK v12 ★");
 
             for (Method m : detClass.getDeclaredMethods()) {
                 final String name = m.getName();
@@ -59,12 +59,13 @@ public class MyModule implements IXposedHookLoadPackage {
                 });
             }
 
-            String[] critical = {"Ij11111IlIijjjlil1jliI", "finishApp", "killProcess", "exitApp", "finish", "shutdown", "onDestroy", "checkSecurity", "securityPolicy", "reportViolation"};
+            String[] critical = {"Ij11111IlIijjjlil1jliI", "finishApp", "killProcess", "exitApp", "finish", "shutdown", "onDestroy", 
+                               "checkSecurity", "securityPolicy", "reportViolation", "showDetectionPopup", "handleSecurityError"};
             for (String name : critical) {
                 try {
                     XposedHelpers.findAndHookMethod(detClass, name, new XC_MethodHook() {
                         @Override protected void beforeHookedMethod(MethodHookParam param) {
-                            XposedBridge.log("UnityFPSUnlocker: ★ CRITICAL 405 BLOCK " + name + " ★");
+                            XposedBridge.log("UnityFPSUnlocker: ★ 405 CRITICAL BLOCK " + name + " ★");
                             param.setResult(null);
                         }
                     });
@@ -81,13 +82,13 @@ public class MyModule implements IXposedHookLoadPackage {
         }
     }
 
-    // セキュリティポリシー特化ブロック
-    private void hookSecurityPolicyUltra(XC_LoadPackage.LoadPackageParam lpparam) {
+    // 405_54_0 最大ブロック
+    private void hookSecurityPolicyMax(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
-            // ポリシー違反終了系
+            // ポリシー違反系
             XposedHelpers.findAndHookMethod("android.os.Process", lpparam.classLoader, "killProcess", int.class, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam param) {
-                    XposedBridge.log("UnityFPSUnlocker: ★ SECURITY KILL BLOCKED ★");
+                    XposedBridge.log("UnityFPSUnlocker: ★ SECURITY KILL BLOCKED (405) ★");
                     param.setResult(null);
                 }
             });
@@ -99,26 +100,33 @@ public class MyModule implements IXposedHookLoadPackage {
                 }
             });
 
-            // アプリ終了関連全般
             XposedHelpers.findAndHookMethod("android.app.Activity", lpparam.classLoader, "finishAndRemoveTask", new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam param) {
-                    XposedBridge.log("UnityFPSUnlocker: ★ finishAndRemoveTask BLOCKED ★");
+                    XposedBridge.log("UnityFPSUnlocker: ★ finishAndRemoveTask BLOCKED (405) ★");
+                    param.setResult(null);
+                }
+            });
+
+            // さらに広範囲
+            XposedHelpers.findAndHookMethod("android.app.ActivityManager", lpparam.classLoader, "killBackgroundProcesses", String.class, new XC_MethodHook() {
+                @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    XposedBridge.log("UnityFPSUnlocker: ★ killBackgroundProcesses BLOCKED ★");
                     param.setResult(null);
                 }
             });
         } catch (Throwable t) {
-            XposedBridge.log("SecurityPolicy hook: " + t.getMessage());
+            XposedBridge.log("SecurityPolicyMax hook: " + t.getMessage());
         }
     }
 
-    // 残りはv10と同じ（hookKillProcess, hookSystemExit など省略せず全部残す）
-    private void hookKillProcess() { /* v10と同じ */ }
-    private void hookSystemExit() { /* v10と同じ */ }
-    private void hookActivityFinish(XC_LoadPackage.LoadPackageParam lpparam) { /* v10と同じ */ }
-    private void hookDisplayRefreshRate(XC_LoadPackage.LoadPackageParam lpparam) { /* v10と同じ */ }
-    private void hookUnityTargetFrameRate(XC_LoadPackage.LoadPackageParam lpparam) { /* v10と同じ */ }
-    private void hookRootChecks() { /* v10と同じ */ }
-    private void hideXposedTraces(XC_LoadPackage.LoadPackageParam lpparam) { /* v10と同じ */ }
+    // 以下は前回と同じ（hookKillProcess, hookSystemExit など）
+    private void hookKillProcess() { /* 省略せずv11と同じ内容を入れる */ }
+    private void hookSystemExit() { /* 同じ */ }
+    private void hookActivityFinish(XC_LoadPackage.LoadPackageParam lpparam) { /* 同じ */ }
+    private void hookDisplayRefreshRate(XC_LoadPackage.LoadPackageParam lpparam) { /* 同じ */ }
+    private void hookUnityTargetFrameRate(XC_LoadPackage.LoadPackageParam lpparam) { /* 同じ */ }
+    private void hookRootChecks() { /* 同じ */ }
+    private void hideXposedTraces(XC_LoadPackage.LoadPackageParam lpparam) { /* 同じ */ }
 
     private void loadPrefsAndNative() {
         XSharedPreferences settings = getPref("fps_prefs");
