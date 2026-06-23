@@ -28,33 +28,37 @@ jobs:
           cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
                 -DANDROID_ABI=arm64-v8a \
                 -DANDROID_PLATFORM=android-28 \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_VERBOSE_MAKEFILE=ON ..
+                -DCMAKE_BUILD_TYPE=Release ..
           cmake --build . --parallel --verbose
 
           mkdir -p ../../magisk_module/zygisk
-          cp -v libUnityFPSUnlocker.so ../../magisk_module/zygisk/arm64-v8a.so || echo "=== .so not found ==="
-          ls -lh ../../magisk_module/zygisk/   # サイズ確認
-          
+          cp -v libUnityFPSUnlocker.so ../../magisk_module/zygisk/arm64-v8a.so || echo "=== COPY FAILED ==="
+          ls -lh ../../magisk_module/zygisk/
+
       - name: Package Magisk Module
         run: |
           cd magisk_module
           cat > module.prop <<EOF
           id=unityfpsunlocker_zygisk
           name=UnityFPSUnlocker Zygisk
-          version=v12-zygisk
-          versionCode=12
+          version=v13-zygisk
+          versionCode=13
           author=M2ki
-          description=#コンパス 60fps + Anti-Detection (Zygisk)
+          description=#コンパス FPS Unlock + Anti Detection (Zygisk)
+          minMagisk=27000
           EOF
 
           mkdir -p META-INF/com/google/android
-          echo '#!/sbin/sh\necho "UnityFPSUnlocker Zygisk installed"' > META-INF/com/google/android/update-binary
+          cat > META-INF/com/google/android/update-binary <<'EOF'
+#!/sbin/sh
+echo "UnityFPSUnlocker Zygisk installed"
+ui_print "UnityFPSUnlocker Zygisk installed"
+EOF
           chmod +x META-INF/com/google/android/update-binary
 
           zip -r9 ../UnityFPSUnlocker-Zygisk.zip .
 
-      - name: Upload
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: UnityFPSUnlocker-Zygisk
