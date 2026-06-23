@@ -8,7 +8,8 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public class MyModule implements IXposedHookLoadPackage {
 
     private int delay = 5;
-    private int fps = 30;           // 目標FPS（prefsで上書き可能）
+    private int realFps = 60;       // 実際の動作FPS（ここを変更）
+    private int fakeRefreshRate = 30; // ゲームに認識させるリフレッシュレート
     private boolean mod_opcode = true;
     private float scale = -1.0f;
 
@@ -31,13 +32,14 @@ public class MyModule implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!"com.nhnpa.cps.huawei".equals(lpparam.packageName)) return;
 
-        XposedBridge.log("UnityFPSUnlocker: #コンパス v8 - 30fps偽装 + 完全検知制圧");
+        XposedBridge.log("UnityFPSUnlocker: #コンパス v9 - 実60fps + 認識30fps 完全版");
 
         hookDetectionPopupFull(lpparam);
         hookKillProcess();
         hookSystemExit();
         hookActivityFinish(lpparam);
-        hookDisplayRefreshRate(lpparam);
+        hookDisplayRefreshRate(lpparam);        // 認識用30fps偽装
+        hookUnityTargetFrameRate(lpparam);      // 実際の動作を60fpsに強制
         hookRootChecks();
         hideXposedTraces(lpparam);
 
@@ -47,9 +49,8 @@ public class MyModule implements IXposedHookLoadPackage {
     private void hookDetectionPopupFull(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
             Class<?> detClass = XposedHelpers.findClass("com.siem.ms7.DetectionPopup", lpparam.classLoader);
-            XposedBridge.log("★ DetectionPopup FOUND - FULL BLOCK v8 ★");
+            XposedBridge.log("★ DetectionPopup FOUND - FULL BLOCK v9 ★");
 
-            // 全メソッドをブロードフック
             for (Method m : detClass.getDeclaredMethods()) {
                 final String name = m.getName();
                 XposedHelpers.findAndHookMethod(detClass, name, new XC_MethodHook() {
@@ -60,7 +61,6 @@ public class MyModule implements IXposedHookLoadPackage {
                 });
             }
 
-            // 特に重要なメソッドを再確保
             String[] critical = {"Ij11111IlIijjjlil1jliI", "finishApp", "killProcess", "exitApp", "finish", "shutdown", "onDestroy"};
             for (String name : critical) {
                 try {
@@ -73,7 +73,6 @@ public class MyModule implements IXposedHookLoadPackage {
                 } catch (Throwable ignored) {}
             }
 
-            // コンストラクタもブロック
             XposedHelpers.findAndHookConstructor(detClass, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam param) {
                     XposedBridge.log("UnityFPSUnlocker: ★ BLOCKED DetectionPopup Constructor ★");
@@ -117,26 +116,42 @@ public class MyModule implements IXposedHookLoadPackage {
                         param.setResult(null);
                     }
                 });
-            XposedBridge.log("Activity.finish hook registered");
-        } catch (Throwable t) {
-            XposedBridge.log("Activity.finish hook failed: " + t.getMessage());
-        }
+        } catch (Throwable ignored) {}
     }
 
+    // ゲームに認識させるリフレッシュレートを30fpsに偽装
     private void hookDisplayRefreshRate(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
             XposedHelpers.findAndHookMethod("android.view.Display", lpparam.classLoader, "getRefreshRate", 
                 new XC_MethodHook() {
                     @Override protected void afterHookedMethod(MethodHookParam param) {
-                        float fakeRate = 30.0f;
-                        param.setResult(fakeRate);
-                        XposedBridge.log("UnityFPSUnlocker: ★ Display.getRefreshRate faked to " + fakeRate + " ★");
+                        param.setResult((float) fakeRefreshRate);
+                        XposedBridge.log("UnityFPSUnlocker: ★ Display.getRefreshRate faked to " + fakeRefreshRate + " ★");
                     }
                 });
-            XposedBridge.log("Display refresh rate hook registered (30fps fake)");
         } catch (Throwable t) {
             XposedBridge.log("Display hook failed: " + t.getMessage());
         }
+    }
+
+    // 実際のUnity動作FPSを60に強制（これが重要）
+    private void hookUnityTargetFrameRate(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            XposedHelpers.findAndHookMethod("com.unity3d.player.UnityPlayer", lpparam.classLoader, 
+                "setFrameRate", int.class, new XC_MethodHook() {
+                    @Override protected void beforeHookedMethod(MethodHookParam param) {
+                        param.args[0] = realFps;
+                        XposedBridge.log("UnityFPSUnlocker: ★ Forced Unity FrameRate to " + realFps + " ★");
+                    }
+                });
+        } catch (Throwable ignored) {}
+
+        try {
+            XposedHelpers.findAndHookMethod("android.view.Choreographer", lpparam.classLoader, 
+                "postFrameCallback", android.view.Choreographer.FrameCallback.class, new XC_MethodHook() {
+                    // 必要に応じて追加調整
+                });
+        } catch (Throwable ignored) {}
     }
 
     private void hookRootChecks() {
@@ -158,8 +173,7 @@ public class MyModule implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(ClassLoader.class, "loadClass", String.class, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam param) {
                     String name = (String) param.args[0];
-                    if (name != null && (name.contains("xposed") || name.contains("lsposed") || name.contains("siem.ms7"))) {
-                        XposedBridge.log("UnityFPSUnlocker: Blocked trace: " + name);
+                    if (name != null && (name.contains("xposed") || name.contains("lsposed"))) {
                         param.setThrowable(new ClassNotFoundException("blocked"));
                     }
                 }
@@ -170,14 +184,14 @@ public class MyModule implements IXposedHookLoadPackage {
     private void loadPrefsAndNative() {
         XSharedPreferences settings = getPref("fps_prefs");
         if (settings != null) {
-            fps = getIntPref(settings, "fps", 30);
+            realFps = getIntPref(settings, "fps", 60);
             mod_opcode = settings.getBoolean("mod_opcode", true);
         }
-        XposedBridge.log("UnityFPSUnlocker: fps=" + fps + " mod_opcode=" + mod_opcode);
+        XposedBridge.log("UnityFPSUnlocker: realFps=" + realFps + " fakeRefresh=30 mod_opcode=" + mod_opcode);
 
         try {
             System.loadLibrary("UnityFPSUnlocker");
-            HelloWorld(delay, fps, mod_opcode, scale);
+            HelloWorld(delay, realFps, mod_opcode, scale);
             XposedBridge.log("Native library loaded successfully");
         } catch (UnsatisfiedLinkError e) {
             XposedBridge.log("Native load failed: " + e.getMessage());
