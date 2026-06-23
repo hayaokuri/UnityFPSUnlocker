@@ -1,4 +1,4 @@
-name: Build Zygisk Module (Pure C++)
+name: Build Zygisk Module
 
 on:
   push:
@@ -15,30 +15,12 @@ jobs:
           ref: zygisk_module
           submodules: recursive
 
-      - name: Setup Android NDK
+      - name: Setup NDK
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27
 
-      - name: Patch CMakeLists.txt (Abseil fix + Output Name)
-        run: |
-          python3 - <<'PYEOF'
-          path = "UnityFPSUnlocker/CMakeLists.txt"
-          with open(path, "r", encoding="utf-8") as f:
-              content = f.read()
-          
-          # Abseil fix
-          fetch_block = '''include(FetchContent)\nFetchContent_Declare(\n  absl\n  GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git\n  GIT_TAG 20240722.0\n)\nset(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)\nset(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)\nset(BUILD_TESTING OFF CACHE BOOL "" FORCE)\nFetchContent_MakeAvailable(absl)\n'''
-          content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
-          
-          # Output name fix for Zygisk
-          content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled for Zygisk")
-          
-          with open(path, "w", encoding="utf-8") as f:
-              f.write(content)
-          PYEOF
-
-      - name: Build Native Library
+      - name: Build Native
         run: |
           cd UnityFPSUnlocker
           mkdir -p build && cd build
@@ -47,33 +29,30 @@ jobs:
                 -DANDROID_PLATFORM=android-28 \
                 -DCMAKE_BUILD_TYPE=Release ..
           cmake --build . --parallel
-          
-          # Zygisk用にコピー
-          mkdir -p ../../magisk_module/zygisk
-          cp libUnityFPSUnlocker.so ../../magisk_module/zygisk/arm64-v8a.so || cp *.so ../../magisk_module/zygisk/arm64-v8a.so
 
-      - name: Package Magisk Zygisk Module
+          # 確実にコピー
+          mkdir -p ../../magisk_module/zygisk
+          cp -v *.so ../../magisk_module/zygisk/arm64-v8a.so || echo "No .so found!"
+
+      - name: Package Module
         run: |
           cd magisk_module
-          
           cat > module.prop <<EOF
           id=unityfpsunlocker_zygisk
-          name=UnityFPSUnlocker Zygisk (Stealth)
+          name=UnityFPSUnlocker Zygisk
           version=v12-zygisk
           versionCode=12
           author=M2ki
-          description=#コンパス 60fps解除 + アンチチート回避 (Zygisk)
+          description=#コンパス FPS Unlock + Anti Detection (Zygisk)
           EOF
-          
+
           mkdir -p META-INF/com/google/android
-          # update-binaryは簡易版で
-          echo '#!/sbin/sh' > META-INF/com/google/android/update-binary
-          echo 'echo "UnityFPSUnlocker Zygisk installed"' >> META-INF/com/google/android/update-binary
+          echo '#!/sbin/sh\necho "Zygisk module installed"' > META-INF/com/google/android/update-binary
           chmod +x META-INF/com/google/android/update-binary
-          
+
           zip -r9 ../UnityFPSUnlocker-Zygisk.zip .
 
-      - name: Upload Zygisk Module
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: UnityFPSUnlocker-Zygisk
