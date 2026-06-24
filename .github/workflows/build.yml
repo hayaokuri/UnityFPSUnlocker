@@ -1,12 +1,41 @@
-      - name: Patch CMakeLists.txt (Abseil + rapidjson + fixes)
+name: Build Xposed Module (Clean)
+
+on:
+  push:
+    branches: [ "xposed" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Xposed Branch (Java Wrapper)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Checkout Zygisk Branch (C++ Engine)
+        uses: actions/checkout@v4
+        with:
+          ref: zygisk_module
+          path: cpp_engine
+          submodules: recursive
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Patch CMakeLists.txt (Abseil + rapidjson)
         run: |
           python3 - <<'PYEOF'
-          path = "cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
-          with open(path, "r", encoding="utf-8") as f:
-              content = f.read()
+path = "cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
+with open(path, "r", encoding="utf-8") as f:
+    content = f.read()
 
-          # 1. Abseil FetchContent
-          fetch_block = '''include(FetchContent)
+# Abseil
+fetch_block = '''include(FetchContent)
 FetchContent_Declare(
   absl
   GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
@@ -17,14 +46,13 @@ set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(absl)
 '''
-          if "find_package(absl REQUIRED)" in content:
-              content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
-          else:
-              print("Warning: find_package(absl) not found, appending FetchContent")
-              content = content.replace("project(", "project(\n" + fetch_block + "\n", 1)
+if "find_package(absl REQUIRED)" in content:
+    content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
+else:
+    content = content.replace("project(", "project(\n" + fetch_block + "\n", 1)
 
-          # 2. rapidjson include path 強化（これが重要）
-          include_block = '''include_directories(
+# rapidjson include（複数候補）
+include_block = '''include_directories(
     .
     third/rapidjson
     third/rapidjson/include
@@ -33,21 +61,32 @@ FetchContent_MakeAvailable(absl)
     utility
     third/xdl
 '''
-          if "include_directories(" in content:
-              content = content.replace("include_directories(", include_block)
-          else:
-              # include_directoriesが存在しない場合に追加
-              content = content.replace("project(", include_block + "\nproject(", 1)
+if "include_directories(" in content:
+    content = content.replace("include_directories(", include_block)
+else:
+    content = content.replace("project(", include_block + "\nproject(", 1)
 
-          # 3. その他の修正
-          content = content.replace("set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/libs/${CMAKE_BUILD_TYPE}/)", "# Disabled")
-          content = content.replace("set_target_properties(${LibraryName} PROPERTIES PREFIX \"\")", "# Disabled")
-          content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled for Gradle")
-          content = content.replace("set(CMAKE_C_VISIBILITY_PRESET hidden)", "# Disabled for JNI")
-          content = content.replace("set(CMAKE_CXX_VISIBILITY_PRESET hidden)", "# Disabled for JNI")
+# その他修正
+content = content.replace("set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/libs/${CMAKE_BUILD_TYPE}/)", "# Disabled")
+content = content.replace("set_target_properties(${LibraryName} PROPERTIES PREFIX \"\")", "# Disabled")
+content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled for Gradle")
+content = content.replace("set(CMAKE_C_VISIBILITY_PRESET hidden)", "# Disabled for JNI")
+content = content.replace("set(CMAKE_CXX_VISIBILITY_PRESET hidden)", "# Disabled for JNI")
 
-          with open(path, "w", encoding="utf-8") as f:
-              f.write(content)
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
 
-          print("✅ CMakeLists.txt successfully patched for rapidjson + Abseil")
-          PYEOF
+print("✅ CMakeLists.txt patched successfully (rapidjson fixed)")
+PYEOF
+
+      - name: Build APK with Gradle
+        run: |
+          echo "Gradle build starting..."
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: UnityFPSUnlocker-Xposed
+          path: app/build/outputs/apk/debug/*.apk
