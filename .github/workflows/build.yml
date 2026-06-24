@@ -1,65 +1,53 @@
-name: Build Zygisk Module
-
-on:
-  push:
-    branches: [ "zygisk_module" ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Zygisk Branch
-        uses: actions/checkout@v4
-        with:
-          ref: zygisk_module
-          submodules: recursive
-
-      - name: Setup NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27
-
-      - name: Build Native Library
+      - name: Patch CMakeLists.txt (Abseil + rapidjson + fixes)
         run: |
-          cd UnityFPSUnlocker
-          rm -rf build
-          mkdir -p build && cd build
-          cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-                -DANDROID_ABI=arm64-v8a \
-                -DANDROID_PLATFORM=android-28 \
-                -DCMAKE_BUILD_TYPE=Release ..
-          cmake --build . --parallel --verbose
+          python3 - <<'PYEOF'
+          path = "cpp_engine/UnityFPSUnlocker/CMakeLists.txt"
+          with open(path, "r", encoding="utf-8") as f:
+              content = f.read()
 
-          mkdir -p ../../magisk_module/zygisk
-          cp -v libUnityFPSUnlocker.so ../../magisk_module/zygisk/arm64-v8a.so || echo "=== COPY FAILED ==="
-          ls -lh ../../magisk_module/zygisk/
+          # 1. Abseil FetchContent
+          fetch_block = '''include(FetchContent)
+FetchContent_Declare(
+  absl
+  GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
+  GIT_TAG        20240722.0
+)
+set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
+set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(absl)
+'''
+          if "find_package(absl REQUIRED)" in content:
+              content = content.replace("find_package(absl REQUIRED)", fetch_block.rstrip())
+          else:
+              print("Warning: find_package(absl) not found, appending FetchContent")
+              content = content.replace("project(", "project(\n" + fetch_block + "\n", 1)
 
-      - name: Package Magisk Module
-        run: |
-          cd magisk_module
-          cat > module.prop <<EOF
-          id=unityfpsunlocker_zygisk
-          name=UnityFPSUnlocker Zygisk
-          version=v13-zygisk
-          versionCode=13
-          author=M2ki
-          description=#コンパス FPS Unlock + Anti Detection (Zygisk)
-          minMagisk=27000
-          EOF
+          # 2. rapidjson include path 強化（これが重要）
+          include_block = '''include_directories(
+    .
+    third/rapidjson
+    third/rapidjson/include
+    third/rapidjson/include/rapidjson
+    UnityFPSUnlocker
+    utility
+    third/xdl
+'''
+          if "include_directories(" in content:
+              content = content.replace("include_directories(", include_block)
+          else:
+              # include_directoriesが存在しない場合に追加
+              content = content.replace("project(", include_block + "\nproject(", 1)
 
-          mkdir -p META-INF/com/google/android
-          cat > META-INF/com/google/android/update-binary <<'EOF'
-#!/sbin/sh
-echo "UnityFPSUnlocker Zygisk installed"
-ui_print "UnityFPSUnlocker Zygisk installed"
-EOF
-          chmod +x META-INF/com/google/android/update-binary
+          # 3. その他の修正
+          content = content.replace("set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/libs/${CMAKE_BUILD_TYPE}/)", "# Disabled")
+          content = content.replace("set_target_properties(${LibraryName} PROPERTIES PREFIX \"\")", "# Disabled")
+          content = content.replace("set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})", "# Disabled for Gradle")
+          content = content.replace("set(CMAKE_C_VISIBILITY_PRESET hidden)", "# Disabled for JNI")
+          content = content.replace("set(CMAKE_CXX_VISIBILITY_PRESET hidden)", "# Disabled for JNI")
 
-          zip -r9 ../UnityFPSUnlocker-Zygisk.zip .
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(content)
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: UnityFPSUnlocker-Zygisk
-          path: UnityFPSUnlocker-Zygisk.zip
+          print("✅ CMakeLists.txt successfully patched for rapidjson + Abseil")
+          PYEOF
