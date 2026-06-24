@@ -22,13 +22,16 @@ FetchContent_MakeAvailable(absl)
 
 set(LibraryName UnityFPSUnlocker)
 
+# rapidjsonを正しく認識させる（重要！）
 include_directories(
     .
-    "third/rapidjson"
-    "third/xdl"
+    third/rapidjson/include   # ← ここを修正・追加
+    third/rapidjson
+    third/xdl
 )
 
-aux_source_directory(\( {CMAKE_CURRENT_SOURCE_DIR}/ \){LibraryName} program-src)
+# ソース収集
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/${LibraryName} program-src)
 aux_source_directory(unity unity-src)
 aux_source_directory(utility utility-src)
 aux_source_directory(third/xdl xdl-src)
@@ -64,4 +67,4 @@ if(ANDROID)
     target_compile_options(${LibraryName} PRIVATE -O3 -fvisibility=hidden)
 endif()
 
-message(STATUS "✅ UnityFPSUnlocker Zygisk build configured successfully")
+message(STATUS "✅ UnityFPSUnlocker build configured (rapidjson fixed)")
